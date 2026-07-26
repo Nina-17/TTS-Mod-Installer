@@ -1,0 +1,20 @@
+Third-Party Notices
+===================
+
+This distribution includes unmodified command-line components from:
+
+7-Zip 26.02
+Copyright (C) 1999-2026 Igor Pavlov
+https://www.7-zip.org/
+
+The bundled 7z.exe and 7z.dll files are provided for x86, x64, and ARM64
+Windows systems. 7-Zip is licensed under the GNU Lesser General Public
+License (LGPL), with additional license information described by 7-Zip.
+
+The original 7-Zip License.txt is included under tools\7zip\License.txt.
+7-Zip source code is available from:
+
+https://www.7-zip.org/download.html
+
+The TTS Mod Installer invokes these components as separate command-line
+programs and does not modify them.
