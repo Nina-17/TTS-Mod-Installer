@@ -1,9 +1,9 @@
-🎲 TTS 本地图包魔法搬运工 v0.3.0 ✨
+🎲 TTS 本地图包魔法搬运工 v0.4.0 ✨
 
 使用前：
 1. 请先把发布 ZIP“全部解压”。
 2. 双击解压后的 Install-TTS-Mods.cmd。
-3. 把一个或多个图包文件夹/ZIP 拖进窗口，按 Enter。
+3. 把一个或多个图包文件夹、ZIP 或 TTSMOD 拖进窗口，按 Enter。
 
 也可以：
 - 把图包直接拖到 Install-TTS-Mods.cmd 图标上。
@@ -17,6 +17,6 @@
 如果提示 TTS 正在运行，请先退出游戏。
 如果提示需要管理员权限，请确认 Windows UAC。
 
-ZIP、7Z 和 RAR 都可以直接使用，不需要另行安装 7-Zip。
+ZIP、TTSMOD、7Z 和 RAR 都可以直接使用，不需要另行安装 7-Zip。
 
 详细说明见 README.md。

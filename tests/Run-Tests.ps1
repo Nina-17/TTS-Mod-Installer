@@ -258,6 +258,26 @@ try {
         -Actual (Test-Path -LiteralPath $expandedZipTemporaryRoot) `
         -Name 'ZIP 临时目录已清理'
 
+    $ttsmodPath = Join-Path $testRoot 'package.ttsmod'
+    Copy-Item -LiteralPath $zipPath -Destination $ttsmodPath
+    $expandedTtsmod = Expand-ModPackage -InputPath $ttsmodPath
+    try {
+        $resolvedTtsmodMods = Resolve-SourceModsRoot -RootPath $expandedTtsmod.Root
+        Assert-Equal `
+            -Expected $true `
+            -Actual (Test-Path -LiteralPath (Join-Path (Join-Path $resolvedTtsmodMods 'Images') 'zip-asset.txt') -PathType Leaf) `
+            -Name 'TTSMOD 按 ZIP 解压后识别 Mods'
+        Assert-Equal -Expected 'Expand-Archive' -Actual $expandedTtsmod.Tool -Name 'TTSMOD 使用 ZIP 解压路径'
+    }
+    finally {
+        $expandedTtsmodTemporaryRoot = $expandedTtsmod.TemporaryRoot
+        Remove-OwnedTemporaryRoot -TemporaryRoot $expandedTtsmodTemporaryRoot
+    }
+    Assert-Equal `
+        -Expected $false `
+        -Actual (Test-Path -LiteralPath $expandedTtsmodTemporaryRoot) `
+        -Name 'TTSMOD 临时目录已清理'
+
     $zipInfo = Get-ZipPackageInfo -ArchivePath $zipPath
     Assert-Equal -Expected 1 -Actual $zipInfo.FileCount -Name 'ZIP 预检统计文件数量'
     Assert-Equal -Expected $true -Actual ($zipInfo.UncompressedBytes -gt 0) -Name 'ZIP 预检统计解压大小'

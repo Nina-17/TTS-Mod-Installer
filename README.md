@@ -1,4 +1,4 @@
-# TTS 本地图包安装器 v0.3.0
+# TTS 本地图包安装器 v0.4.0
 
 Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖到游戏当前使用的 Mods 目录。
 
@@ -24,7 +24,7 @@ Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖�
 
 - Windows 10/11。
 - Windows PowerShell 5.1，无需安装 Python 或 Node.js。
-- 文件夹和 ZIP 原生支持。
+- 文件夹、ZIP 和 TTSMOD（`.ttsmod`）原生支持；`.ttsmod` 按 ZIP 处理。
 - 7Z/RAR：发布包内置官方便携 7-Zip 26.02 组件，用户无需安装 7-Zip。
 - 自动识别 Documents 和 Game Data 两种 TTS Mods 保存位置。
 - 支持 Steam 默认库和其他磁盘上的附加 Steam 库。
@@ -149,10 +149,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TTSModInstaller.ps1 "D
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
 ```
 
-测试覆盖 TTS 配置解析与冲突处理、Steam 库解析、`robocopy` 退出码、多路径拖放、压缩包预检、ZIP 安全检查、7Z/RAR 技术列表解析与警告语义、Mods 包装目录识别和模拟批量端到端安装。
+测试覆盖 TTS 配置解析与冲突处理、Steam 库解析、`robocopy` 退出码、多路径拖放、压缩包预检、ZIP/TTSMOD 安全检查与解压、7Z/RAR 技术列表解析与警告语义、Mods 包装目录识别和模拟批量端到端安装。
 
 ## 版本
 
+- `v0.4.0`：新增 `.ttsmod` 支持，按普通 ZIP 图包完成预检、解压和 Mods 合并安装；不额外处理 `Saves`。
 - `v0.3.0`：内置官方便携 7-Zip 26.02，7Z/RAR 不再要求用户预装软件；支持 x86、x64 和 ARM64，并校验组件哈希。
 - `v0.2.0`：增加配置冲突处理、压缩包预检、多图包批次、文件选择窗口、扫描进度、UAC 结果回传和旧文件清理。
 - `v0.1.0`：最初的稳定脚本版，发布包继续保留在 `dist` 目录。

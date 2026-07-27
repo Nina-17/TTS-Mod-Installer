@@ -17,7 +17,7 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$script:InstallerVersion = '0.3.0'
+$script:InstallerVersion = '0.4.0'
 $script:Bundled7ZipVersion = '26.02'
 $script:Bundled7ZipHashes = @{
     'x86\7z.exe' = '285e5220d6d4240b6a4bdb6357d427e457313376e3464d3cb973637a384ed02a'
@@ -1208,8 +1208,8 @@ function Expand-ModPackage {
     }
 
     $extension = $item.Extension.ToLowerInvariant()
-    if ($extension -notin @('.zip', '.7z', '.rar')) {
-        Throw-InstallerError -Message ("不支持的文件类型：{0}。支持文件夹、ZIP、7Z 和 RAR。" -f $extension) -ExitCode 2
+    if ($extension -notin @('.zip', '.ttsmod', '.7z', '.rar')) {
+        Throw-InstallerError -Message ("不支持的文件类型：{0}。支持文件夹、ZIP、TTSMOD、7Z 和 RAR。" -f $extension) -ExitCode 2
     }
 
     $tempBase = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller'
@@ -1218,7 +1218,7 @@ function Expand-ModPackage {
     $hadArchiveWarnings = $false
 
     try {
-        if ($extension -eq '.zip') {
+        if ($extension -in @('.zip', '.ttsmod')) {
             $packageInfo = Get-ZipPackageInfo -ArchivePath $item.FullName
             $tool = 'Expand-Archive'
         }
@@ -1249,8 +1249,8 @@ function Expand-ModPackage {
         $tempRoot = Join-Path $tempBase ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
-        if ($extension -eq '.zip') {
-            Write-InstallerStatus -Message '📦 正在解压 ZIP 图包……'
+        if ($extension -in @('.zip', '.ttsmod')) {
+            Write-InstallerStatus -Message ("📦 正在解压 {0} 图包……" -f $extension.ToUpperInvariant())
             Expand-Archive -LiteralPath $item.FullName -DestinationPath $tempRoot -Force
         }
         else {
@@ -1800,7 +1800,7 @@ function Select-ModPackageFiles {
         Add-Type -AssemblyName System.Windows.Forms
         $dialog = New-Object System.Windows.Forms.OpenFileDialog
         $dialog.Title = '选择一个或多个 TTS 图包'
-        $dialog.Filter = '支持的图包 (*.zip;*.7z;*.rar)|*.zip;*.7z;*.rar|ZIP 图包 (*.zip)|*.zip|所有文件 (*.*)|*.*'
+        $dialog.Filter = '支持的图包 (*.zip;*.ttsmod;*.7z;*.rar)|*.zip;*.ttsmod;*.7z;*.rar|ZIP/TTSMOD 图包 (*.zip;*.ttsmod)|*.zip;*.ttsmod|所有文件 (*.*)|*.*'
         $dialog.Multiselect = $true
         $dialog.CheckFileExists = $true
         if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
@@ -2004,7 +2004,7 @@ function Invoke-InstallerEntryPoint {
     }
 
     Write-InstallerSection -Icon '💌' -Title '把图包交给我吧！' -Subtitle '拖进窗口后按 Enter，就会自动寻找 TTS Mods 小窝～'
-    Write-Host '      📂 支持：文件夹 / ZIP / 7Z / RAR' -ForegroundColor Cyan
+    Write-Host '      📂 支持：文件夹 / ZIP / TTSMOD / 7Z / RAR' -ForegroundColor Cyan
     Write-Host '      🔎 输入 F：打开文件选择窗口' -ForegroundColor Green
     Write-Host '      👋 输入 Q：先不安装，退出程序' -ForegroundColor Yellow
 
