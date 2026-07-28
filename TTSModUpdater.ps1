@@ -7,6 +7,60 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
+function Get-UpdateThemeColor {
+    param(
+        [ValidateSet('Primary', 'Accent', 'Info', 'Success', 'Warning', 'Error', 'Muted', 'Text')]
+        [string]$Role
+    )
+
+    switch ($Role) {
+        'Primary' { return [pscustomobject]@{ Rgb = '242;182;198'; Fallback = 'Magenta' } }
+        'Accent' { return [pscustomobject]@{ Rgb = '199;183;221'; Fallback = 'DarkMagenta' } }
+        'Info' { return [pscustomobject]@{ Rgb = '169;199;216'; Fallback = 'Cyan' } }
+        'Success' { return [pscustomobject]@{ Rgb = '168;206;184'; Fallback = 'Green' } }
+        'Warning' { return [pscustomobject]@{ Rgb = '217;192;138'; Fallback = 'DarkYellow' } }
+        'Error' { return [pscustomobject]@{ Rgb = '220;146;151'; Fallback = 'Red' } }
+        'Muted' { return [pscustomobject]@{ Rgb = '156;155;168'; Fallback = 'DarkGray' } }
+        default { return [pscustomobject]@{ Rgb = '221;216;225'; Fallback = 'Gray' } }
+    }
+}
+
+function Test-UpdateVirtualTerminal {
+    try {
+        if ($null -ne $Host.UI -and
+            $Host.UI.PSObject.Properties.Name -contains 'SupportsVirtualTerminal') {
+            return [bool]$Host.UI.SupportsVirtualTerminal
+        }
+    }
+    catch {
+        # Fall back to the classic 16-color console palette.
+    }
+    return $false
+}
+
+function Write-UpdateThemeText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Text,
+
+        [ValidateSet('Primary', 'Accent', 'Info', 'Success', 'Warning', 'Error', 'Muted', 'Text')]
+        [string]$Role = 'Text',
+
+        [switch]$NoNewline
+    )
+
+    $color = Get-UpdateThemeColor -Role $Role
+    if (Test-UpdateVirtualTerminal) {
+        $escape = [char]27
+        $styledText = "{0}[38;2;{1}m{2}{0}[0m" -f $escape, $color.Rgb, $Text
+        Write-Host $styledText -NoNewline:$NoNewline
+        return
+    }
+
+    Write-Host $Text -ForegroundColor $color.Fallback -NoNewline:$NoNewline
+}
+
 function Write-UpdateStatus {
     param(
         [Parameter(Mandatory = $true)]
@@ -16,23 +70,23 @@ function Write-UpdateStatus {
         [string]$Level = 'INFO'
     )
 
-    $color = 'Cyan'
+    $color = 'Info'
     $icon = '💠'
     if ($Level -eq 'OK') {
-        $color = 'Green'
+        $color = 'Success'
         $icon = '✅'
     }
     elseif ($Level -eq 'WARN') {
-        $color = 'Yellow'
+        $color = 'Warning'
         $icon = '⚠️'
     }
     elseif ($Level -eq 'ERROR') {
-        $color = 'Red'
+        $color = 'Error'
         $icon = '❌'
     }
 
     $line = '[{0}] [{1}] {2}' -f (Get-Date -Format 'HH:mm:ss'), $Level, $Message
-    Write-Host ("  {0} {1}" -f $icon, $Message) -ForegroundColor $color
+    Write-UpdateThemeText -Text ("  {0} {1}" -f $icon, $Message) -Role $color
     if (-not [string]::IsNullOrWhiteSpace($script:UpdateLogPath)) {
         $line | Add-Content -LiteralPath $script:UpdateLogPath -Encoding UTF8
     }
@@ -176,9 +230,9 @@ try {
     }
 
     Write-Host ''
-    Write-Host '  ✦ ───────────────────────────────────────── ✦' -ForegroundColor DarkMagenta
-    Write-Host '       🔄  正在更新 TTS 图包魔法搬运工  ✨' -ForegroundColor Magenta
-    Write-Host '  ✦ ───────────────────────────────────────── ✦' -ForegroundColor DarkMagenta
+    Write-UpdateThemeText -Text '  ✦ ───────────────────────────────────────── ✦' -Role Accent
+    Write-UpdateThemeText -Text '       🔄  正在更新 TTS 图包魔法搬运工  ✨' -Role Primary
+    Write-UpdateThemeText -Text '  ✦ ───────────────────────────────────────── ✦' -Role Accent
     Write-Host ''
 
     Write-UpdateStatus -Message '正在等待旧版安装器退出……'
@@ -273,7 +327,7 @@ finally {
 
     if (-not $updateSucceeded) {
         Write-Host ''
-        Write-Host '  按 Enter 关闭更新窗口。' -ForegroundColor Yellow
+        Write-UpdateThemeText -Text '  按 Enter 关闭更新窗口。' -Role Warning
         Read-Host | Out-Null
     }
 }

@@ -53,8 +53,8 @@ $jsonDocuments = '{"ConfigMods":{"Caching":true,"Location":0}}'
 $jsonGameData = '{"ConfigMods":{"Caching":true,"Location":1}}'
 
 Assert-Equal `
-    -Expected ([version]'0.5.3') `
-    -Actual (ConvertTo-InstallerVersion -VersionText 'v0.5.3') `
+    -Expected ([version]'0.5.4') `
+    -Actual (ConvertTo-InstallerVersion -VersionText 'v0.5.4') `
     -Name '解析带 v 前缀的更新版本号'
 Assert-Equal `
     -Expected $true `
@@ -62,24 +62,24 @@ Assert-Equal `
     -Name '拒绝非正式三段版本号'
 
 $mockRelease = [pscustomobject]@{
-    tag_name = 'v0.5.3'
+    tag_name = 'v0.5.4'
     assets = @(
         [pscustomobject]@{
-            name = 'TTSModInstaller-v0.5.3.zip'
-            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.3.zip'
+            name = 'TTSModInstaller-v0.5.4.zip'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.4.zip'
             digest = ('sha256:' + ('a' * 64))
         },
         [pscustomobject]@{
-            name = 'TTSModInstaller-v0.5.3.zip.sha256'
-            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.3.zip.sha256'
+            name = 'TTSModInstaller-v0.5.4.zip.sha256'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.4.zip.sha256'
         }
     )
 }
 $mockZipAsset = Get-InstallerReleaseAsset `
     -Release $mockRelease `
-    -AssetName 'TTSModInstaller-v0.5.3.zip'
+    -AssetName 'TTSModInstaller-v0.5.4.zip'
 Assert-Equal `
-    -Expected 'TTSModInstaller-v0.5.3.zip' `
+    -Expected 'TTSModInstaller-v0.5.4.zip' `
     -Actual $mockZipAsset.name `
     -Name '按完整文件名选择 GitHub Release 更新资产'
 $mockSourceCodeAsset = Get-InstallerReleaseAsset `
@@ -94,8 +94,8 @@ Assert-Equal `
     -Actual (ConvertTo-InstallerProxyUrl -Url $script:UpdateApiUrl) `
     -Name '生成 gh-proxy.com API 备用地址'
 Assert-Equal `
-    -Expected 'https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.3/package.zip' `
-    -Actual (ConvertTo-InstallerProxyUrl -Url 'https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.3/package.zip') `
+    -Expected 'https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.4/package.zip' `
+    -Actual (ConvertTo-InstallerProxyUrl -Url 'https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.4/package.zip') `
     -Name '生成 gh-proxy.com Release 资产备用地址'
 Assert-Equal `
     -Expected $true `
@@ -193,9 +193,14 @@ $okAppearance = Get-InstallerStatusAppearance -Level 'OK'
 $warningAppearance = Get-InstallerStatusAppearance -Level 'WARN'
 $errorAppearance = Get-InstallerStatusAppearance -Level 'ERROR'
 Assert-Equal -Expected '✅' -Actual $okAppearance.Icon -Name '成功状态使用可爱图标'
-Assert-Equal -Expected 'Green' -Actual $okAppearance.Color -Name '成功状态使用绿色'
-Assert-Equal -Expected 'Yellow' -Actual $warningAppearance.Color -Name '警告状态使用黄色'
+Assert-Equal -Expected 'Success' -Actual $okAppearance.Color -Name '成功状态使用柔和薄荷色角色'
+Assert-Equal -Expected 'Warning' -Actual $warningAppearance.Color -Name '警告状态使用柔和沙金色角色'
 Assert-Equal -Expected '❌' -Actual $errorAppearance.Icon -Name '失败状态使用醒目图标'
+$primaryThemeColor = Get-InstallerThemeColor -Role 'Primary'
+$errorThemeColor = Get-InstallerThemeColor -Role 'Error'
+Assert-Equal -Expected '242;182;198' -Actual $primaryThemeColor.Rgb -Name '主色使用浅粉 RGB'
+Assert-Equal -Expected '220;146;151' -Actual $errorThemeColor.Rgb -Name '错误色使用低饱和珊瑚红'
+Assert-Equal -Expected 'Red' -Actual $errorThemeColor.Fallback -Name '不支持真彩色时错误提示仍清晰可辨'
 
 Assert-Equal `
     -Expected 'x64' `
@@ -441,6 +446,18 @@ try {
         -Action { Assert-SafeCopyRelationship -SourceRoot $wrapped -TargetRoot $wrappedMods } `
         -ExitCode 2 `
         -Name '拒绝来源和目标互相嵌套'
+
+    $overwriteOnlySource = Join-Path $testRoot 'OverwriteOnlySource'
+    $overwriteOnlyTarget = Join-Path $testRoot 'OverwriteOnlyTarget'
+    New-Item -ItemType Directory -Path $overwriteOnlySource, $overwriteOnlyTarget -Force | Out-Null
+    [IO.File]::WriteAllBytes((Join-Path $overwriteOnlySource 'same.bin'), [byte[]](1, 2, 3, 4))
+    [IO.File]::WriteAllBytes((Join-Path $overwriteOnlyTarget 'same.bin'), [byte[]](9, 8, 7, 6))
+    $overwriteOnlySummary = Get-CopySummary -SourceRoot $overwriteOnlySource -TargetRoot $overwriteOnlyTarget
+    Assert-Equal -Expected 1 -Actual $overwriteOnlySummary.FileCount -Name '复制摘要统计覆盖文件数'
+    Assert-Equal -Expected 4 -Actual $overwriteOnlySummary.TotalBytes -Name '复制摘要统计本次写入量'
+    Assert-Equal -Expected 1 -Actual $overwriteOnlySummary.ConflictCount -Name '复制摘要统计同名目标文件'
+    Assert-Equal -Expected 4 -Actual $overwriteOnlySummary.OverwriteBytes -Name '复制摘要统计覆盖写入量'
+    Assert-Equal -Expected 0 -Actual $overwriteOnlySummary.RequiredGrowthBytes -Name '同大小覆盖的预计净增长为零'
 
     $quotedPath = '"{0}"' -f $contentRoot
     Assert-Equal `

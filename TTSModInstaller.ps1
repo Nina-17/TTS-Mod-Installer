@@ -18,7 +18,7 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$script:InstallerVersion = '0.5.3'
+$script:InstallerVersion = '0.5.4'
 $script:Bundled7ZipVersion = '26.02'
 $script:Bundled7ZipHashes = @{
     'x86\7z.exe' = '285e5220d6d4240b6a4bdb6357d427e457313376e3464d3cb973637a384ed02a'
@@ -164,6 +164,60 @@ function Initialize-InstallerLog {
     return $script:LogPath
 }
 
+function Get-InstallerThemeColor {
+    param(
+        [ValidateSet('Primary', 'Accent', 'Info', 'Success', 'Warning', 'Error', 'Muted', 'Text')]
+        [string]$Role
+    )
+
+    switch ($Role) {
+        'Primary' { return [pscustomobject]@{ Rgb = '242;182;198'; Fallback = 'Magenta' } }
+        'Accent' { return [pscustomobject]@{ Rgb = '199;183;221'; Fallback = 'DarkMagenta' } }
+        'Info' { return [pscustomobject]@{ Rgb = '169;199;216'; Fallback = 'Cyan' } }
+        'Success' { return [pscustomobject]@{ Rgb = '168;206;184'; Fallback = 'Green' } }
+        'Warning' { return [pscustomobject]@{ Rgb = '217;192;138'; Fallback = 'DarkYellow' } }
+        'Error' { return [pscustomobject]@{ Rgb = '220;146;151'; Fallback = 'Red' } }
+        'Muted' { return [pscustomobject]@{ Rgb = '156;155;168'; Fallback = 'DarkGray' } }
+        default { return [pscustomobject]@{ Rgb = '221;216;225'; Fallback = 'Gray' } }
+    }
+}
+
+function Test-InstallerVirtualTerminal {
+    try {
+        if ($null -ne $Host.UI -and
+            $Host.UI.PSObject.Properties.Name -contains 'SupportsVirtualTerminal') {
+            return [bool]$Host.UI.SupportsVirtualTerminal
+        }
+    }
+    catch {
+        # Fall back to the classic 16-color console palette.
+    }
+    return $false
+}
+
+function Write-InstallerThemeText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Text,
+
+        [ValidateSet('Primary', 'Accent', 'Info', 'Success', 'Warning', 'Error', 'Muted', 'Text')]
+        [string]$Role = 'Text',
+
+        [switch]$NoNewline
+    )
+
+    $color = Get-InstallerThemeColor -Role $Role
+    if (Test-InstallerVirtualTerminal) {
+        $escape = [char]27
+        $styledText = "{0}[38;2;{1}m{2}{0}[0m" -f $escape, $color.Rgb, $Text
+        Write-Host $styledText -NoNewline:$NoNewline
+        return
+    }
+
+    Write-Host $Text -ForegroundColor $color.Fallback -NoNewline:$NoNewline
+}
+
 function Write-InstallerStatus {
     param(
         [Parameter(Mandatory = $true)]
@@ -177,9 +231,9 @@ function Write-InstallerStatus {
     $timestamp = Get-Date -Format 'HH:mm:ss'
     $line = '[{0}] [{1}] {2}' -f $timestamp, $Level, $Message
 
-    Write-Host ("  {0}  " -f $timestamp) -ForegroundColor DarkGray -NoNewline
-    Write-Host ("{0} " -f $appearance.Icon) -ForegroundColor $appearance.Color -NoNewline
-    Write-Host $Message -ForegroundColor $appearance.Color
+    Write-InstallerThemeText -Text ("  {0}  " -f $timestamp) -Role Muted -NoNewline
+    Write-InstallerThemeText -Text ("{0} " -f $appearance.Icon) -Role $appearance.Color -NoNewline
+    Write-InstallerThemeText -Text $Message -Role $appearance.Color
 
     if (-not [string]::IsNullOrWhiteSpace($script:LogPath)) {
         $line | Add-Content -LiteralPath $script:LogPath -Encoding UTF8
@@ -194,16 +248,16 @@ function Get-InstallerStatusAppearance {
 
     switch ($Level) {
         'OK' {
-            return [pscustomobject]@{ Icon = '✅'; Color = 'Green' }
+            return [pscustomobject]@{ Icon = '✅'; Color = 'Success' }
         }
         'WARN' {
-            return [pscustomobject]@{ Icon = '⚠️'; Color = 'Yellow' }
+            return [pscustomobject]@{ Icon = '⚠️'; Color = 'Warning' }
         }
         'ERROR' {
-            return [pscustomobject]@{ Icon = '❌'; Color = 'Red' }
+            return [pscustomobject]@{ Icon = '❌'; Color = 'Error' }
         }
         default {
-            return [pscustomobject]@{ Icon = '💠'; Color = 'Cyan' }
+            return [pscustomobject]@{ Icon = '💠'; Color = 'Info' }
         }
     }
 }
@@ -217,10 +271,10 @@ function Write-InstallerBanner {
     }
 
     Write-Host ''
-    Write-Host '  ✦ ───────────────────────────────────────── ✦' -ForegroundColor DarkMagenta
-    Write-Host '       🎲  TTS 本地图包魔法搬运工  ✨' -ForegroundColor Magenta
-    Write-Host ("       v{0}    (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧" -f $script:InstallerVersion) -ForegroundColor Cyan
-    Write-Host '  ✦ ───────────────────────────────────────── ✦' -ForegroundColor DarkMagenta
+    Write-InstallerThemeText -Text '  ✦ ───────────────────────────────────────── ✦' -Role Accent
+    Write-InstallerThemeText -Text '       🎲  TTS 本地图包魔法搬运工  ✨' -Role Primary
+    Write-InstallerThemeText -Text ("       v{0}    (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧" -f $script:InstallerVersion) -Role Info
+    Write-InstallerThemeText -Text '  ✦ ───────────────────────────────────────── ✦' -Role Accent
     Write-Host ''
 }
 
@@ -236,11 +290,11 @@ function Write-InstallerSection {
     )
 
     Write-Host ''
-    Write-Host ("  {0}  {1}" -f $Icon, $Title) -ForegroundColor Magenta
+    Write-InstallerThemeText -Text ("  {0}  {1}" -f $Icon, $Title) -Role Primary
     if (-not [string]::IsNullOrWhiteSpace($Subtitle)) {
-        Write-Host ("      {0}" -f $Subtitle) -ForegroundColor DarkCyan
+        Write-InstallerThemeText -Text ("      {0}" -f $Subtitle) -Role Info
     }
-    Write-Host '  ───────────────────────────────────────────' -ForegroundColor DarkMagenta
+    Write-InstallerThemeText -Text '  ───────────────────────────────────────────' -Role Accent
 }
 
 function ConvertTo-DisplaySize {
@@ -613,8 +667,8 @@ function Invoke-InstallerUpdateCheck {
             -Icon '🆕' `
             -Title ("发现新版本 v{0}！" -f $latestVersion) `
             -Subtitle ("当前版本 v{0}，可以一键更新啦 (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧" -f $currentVersion)
-        Write-Host '      [U] 立即下载并更新' -ForegroundColor Green
-        Write-Host '      [S] 本次跳过，继续安装图包' -ForegroundColor Yellow
+        Write-InstallerThemeText -Text '      [U] 立即下载并更新' -Role Success
+        Write-InstallerThemeText -Text '      [S] 本次跳过，继续安装图包' -Role Warning
         $choice = (Read-Host '  请选择').Trim()
         if ($choice -ine 'U') {
             Write-InstallerStatus -Message '本次先不更新，继续使用当前版本。'
@@ -1086,21 +1140,21 @@ function Resolve-TTSModsDestination {
 
     Write-InstallerSection -Icon '🧭' -Title '请选择 Mods 小窝' -Subtitle '检测到的位置不够明确，需要你来拍板啦 (｡･ω･｡)'
     if ($forcePrompt) {
-        Write-Host '  ⚠️  多个 TTS 配置给出了不同结果：' -ForegroundColor Yellow
+        Write-InstallerThemeText -Text '  ⚠️  多个 TTS 配置给出了不同结果：' -Role Warning
         foreach ($candidate in $setting.Candidates) {
-            Write-Host ("      • {0}  →  {1}" -f $candidate.ValueName, $candidate.Mode) -ForegroundColor Yellow
+            Write-InstallerThemeText -Text ("      • {0}  →  {1}" -f $candidate.ValueName, $candidate.Mode) -Role Warning
         }
     }
     else {
-        Write-Host '  ⚠️  无法从 TTS 配置唯一确定 Mods 位置。' -ForegroundColor Yellow
+        Write-InstallerThemeText -Text '  ⚠️  无法从 TTS 配置唯一确定 Mods 位置。' -Role Warning
     }
     Write-Host ''
-    Write-Host ("  [1] 📄 Documents  {0}" -f $documentsPath) -ForegroundColor Cyan
+    Write-InstallerThemeText -Text ("  [1] 📄 Documents  {0}" -f $documentsPath) -Role Info
     if (-not [string]::IsNullOrWhiteSpace($gameDataPath)) {
-        Write-Host ("  [2] 🎮 Game Data  {0}" -f $gameDataPath) -ForegroundColor Green
+        Write-InstallerThemeText -Text ("  [2] 🎮 Game Data  {0}" -f $gameDataPath) -Role Success
     }
     else {
-        Write-Host '  [2] 🎮 Game Data  未找到 TTS 安装目录，当前不可选' -ForegroundColor DarkGray
+        Write-InstallerThemeText -Text '  [2] 🎮 Game Data  未找到 TTS 安装目录，当前不可选' -Role Muted
     }
 
     while ($true) {
@@ -1125,7 +1179,7 @@ function Resolve-TTSModsDestination {
                 GameDataPath = $gameDataPath
             }
         }
-        Write-Host '  (・_・;)  输入无效，请输入 1 或 2。' -ForegroundColor Yellow
+        Write-InstallerThemeText -Text '  (・_・;)  输入无效，请输入 1 或 2。' -Role Warning
     }
 }
 
@@ -1660,7 +1714,7 @@ function Expand-ModPackage {
         else {
             Write-InstallerStatus -Message ("📦 正在使用 7-Zip 解压 {0}……" -f $extension.ToUpperInvariant())
             & $sevenZip 'x' '-y' '-bso0' '-bsp0' ("-o{0}" -f $tempRoot) '--' $item.FullName 2>&1 |
-                ForEach-Object { Write-Host ("      {0}" -f $_) -ForegroundColor DarkGray }
+                ForEach-Object { Write-InstallerThemeText -Text ("      {0}" -f $_) -Role Muted }
             $sevenZipExitCode = $LASTEXITCODE
             if ($sevenZipExitCode -gt 1) {
                 Throw-InstallerError -Message ("7-Zip 解压失败，退出码：{0}" -f $sevenZipExitCode) -ExitCode 4
@@ -1770,6 +1824,7 @@ function Get-CopySummary {
     $sourcePrefixLength = $SourceRoot.TrimEnd('\', '/').Length
     [Int64]$totalBytes = 0
     [Int64]$requiredGrowthBytes = 0
+    [Int64]$overwriteBytes = 0
     [int]$fileCount = 0
     [int]$conflictCount = 0
 
@@ -1792,6 +1847,7 @@ function Get-CopySummary {
         $targetFile = Join-Path $TargetRoot $relativePath
         if (Test-Path -LiteralPath $targetFile -PathType Leaf) {
             $conflictCount++
+            $overwriteBytes += [Int64]$entry.Length
             try {
                 $existingLength = [Int64](Get-Item -LiteralPath $targetFile -Force).Length
                 if ($entry.Length -gt $existingLength) {
@@ -1827,6 +1883,7 @@ function Get-CopySummary {
         FileCount = $fileCount
         TotalBytes = $totalBytes
         ConflictCount = $conflictCount
+        OverwriteBytes = $overwriteBytes
         RequiredGrowthBytes = $requiredGrowthBytes
         FreeBytes = $freeBytes
     }
@@ -1969,9 +2026,10 @@ return $LASTEXITCODE
         $animationStep = 0
         while (-not $asyncCopy.IsCompleted) {
             $frame = Get-CopyAnimationFrame -Step $animationStep
-            Write-Host (
-                "`r  🐾 [{0}] {1}  搬运中……" -f $frame.Track, $frame.Face
-            ) -ForegroundColor Magenta -NoNewline
+            Write-InstallerThemeText `
+                -Text ("`r  🐾 [{0}] {1}  搬运中……" -f $frame.Track, $frame.Face) `
+                -Role Primary `
+                -NoNewline
             Start-Sleep -Milliseconds 120
             $animationStep++
         }
@@ -2020,7 +2078,7 @@ function Remove-OwnedTemporaryRoot {
 
     try {
         Remove-Item -LiteralPath $fullTemporaryRoot -Recurse -Force
-        Write-InstallerStatus -Message '临时解压目录收拾干净啦 🧹 (｡･ω･｡)ﾉ'
+        Write-InstallerStatus -Message '临时解压目录清理干净啦 🧹 (｡･ω･｡)ﾉ'
     }
     catch {
         Write-InstallerStatus -Level WARN -Message ("临时目录清理失败，可稍后手动删除：{0}" -f $fullTemporaryRoot)
@@ -2195,9 +2253,17 @@ function Invoke-OnePackageInstall {
             $summary.ConflictCount)
 
         if ($null -ne $summary.FreeBytes) {
-            Write-InstallerStatus -Message ("目标磁盘可用空间：{0}；预计净增长：{1}" -f `
+            Write-InstallerStatus -Message ("目标磁盘可用空间：{0}；本次写入约：{1}；预计净增长：{2}" -f `
                 (ConvertTo-DisplaySize -Bytes $summary.FreeBytes),
+                (ConvertTo-DisplaySize -Bytes $summary.TotalBytes),
                 (ConvertTo-DisplaySize -Bytes $summary.RequiredGrowthBytes))
+            if ($summary.ConflictCount -gt 0 -and $summary.RequiredGrowthBytes -eq 0) {
+                Write-InstallerStatus -Message (
+                    "净增长为 0 B：{0} 个同名文件将被覆盖，仍会写入约 {1}。" -f
+                    $summary.ConflictCount,
+                    (ConvertTo-DisplaySize -Bytes $summary.OverwriteBytes)
+                )
+            }
 
             $reserve = 64MB
             if ($summary.FreeBytes -lt ($summary.RequiredGrowthBytes + $reserve)) {
@@ -2215,7 +2281,7 @@ function Invoke-OnePackageInstall {
             -Level $completionStatus.Level `
             -Message ("{0}（robocopy 退出码 {1}）。" -f $completionStatus.Message, $robocopyExitCode)
         Write-InstallerStatus -Level OK -Message ("已经放进：{0}" -f $destination.Path)
-        Write-InstallerStatus -Message ("小本本日志：{0}" -f $script:LogPath)
+        Write-InstallerStatus -Message ("运行日志：{0}" -f $script:LogPath)
         $script:LastInstallResult = [pscustomobject]@{
             PackagePath = $resolvedInput
             ExitCode = 0
@@ -2309,7 +2375,7 @@ function Select-ModPackageFiles {
         }
     }
     catch {
-        Write-Host ("  ⚠️ 无法打开文件选择窗口：{0} (・_・;)" -f $_.Exception.Message) -ForegroundColor Yellow
+        Write-InstallerThemeText -Text ("  ⚠️ 无法打开文件选择窗口：{0} (・_・;)" -f $_.Exception.Message) -Role Warning
     }
     finally {
         if ($null -ne $dialog) {
@@ -2457,7 +2523,7 @@ function Invoke-PackageBatch {
 
 function Invoke-InstallerEntryPoint {
     if (-not $script:IsWindowsPlatform) {
-        Write-Host '❌ 此安装器只能在 Windows 上实际运行 (╥﹏╥)' -ForegroundColor Red
+        Write-InstallerThemeText -Text '❌ 此安装器只能在 Windows 上实际运行 (╥﹏╥)' -Role Error
         return 10
     }
 
@@ -2485,7 +2551,7 @@ function Invoke-InstallerEntryPoint {
             $resultHandoffPath = [string]$handoff.ResultPath
         }
         catch {
-            Write-Host ("  ❌ {0} (╥﹏╥)" -f $_.Exception.Message) -ForegroundColor Red
+            Write-InstallerThemeText -Text ("  ❌ {0} (╥﹏╥)" -f $_.Exception.Message) -Role Error
             return 5
         }
     }
@@ -2536,20 +2602,20 @@ function Invoke-InstallerEntryPoint {
     }
 
     if ($effectiveNonInteractive) {
-        Write-Host '  ❌ 非交互模式必须通过参数提供图包路径 (・_・;)' -ForegroundColor Red
+        Write-InstallerThemeText -Text '  ❌ 非交互模式必须通过参数提供图包路径 (・_・;)' -Role Error
         return 2
     }
 
     Write-InstallerSection -Icon '💌' -Title '把图包交给我吧！' -Subtitle '拖进窗口后按 Enter，就会自动寻找 TTS Mods 小窝～'
-    Write-Host '      📂 支持：文件夹 / ZIP / TTSMOD / 7Z / RAR' -ForegroundColor Cyan
-    Write-Host '      🔎 输入 F：打开文件选择窗口' -ForegroundColor Green
-    Write-Host '      👋 输入 Q：先不安装，退出程序' -ForegroundColor Yellow
+    Write-InstallerThemeText -Text '      📂 支持：文件夹 / ZIP / TTSMOD / 7Z / RAR' -Role Info
+    Write-InstallerThemeText -Text '      🔎 输入 F：打开文件选择窗口' -Role Success
+    Write-InstallerThemeText -Text '      👋 输入 Q：先不安装，退出程序' -Role Warning
 
     while ($true) {
         Write-Host ''
         $inputValue = (Read-Host '  (づ｡◕‿‿◕｡)づ 图包路径').Trim()
         if ($inputValue -ieq 'Q') {
-            Write-Host '  👋 下次见～ 图包小窝会等你的！(｡･ω･｡)ﾉ' -ForegroundColor Magenta
+            Write-InstallerThemeText -Text '  👋 下次见～ 图包小窝会等你的！(｡･ω･｡)ﾉ' -Role Primary
             return 0
         }
         if ($inputValue -ieq 'F') {
@@ -2575,7 +2641,7 @@ function Invoke-InstallerEntryPoint {
             $next = (Read-Host '  🔧 按 Enter 重新选择；输入 Q 暂时退出').Trim()
         }
         if ($next -ieq 'Q') {
-            Write-Host '  👋 辛苦啦，下次再来搬图包～ (｡･ω･｡)ﾉ' -ForegroundColor Magenta
+            Write-InstallerThemeText -Text '  👋 辛苦啦，下次再来搬图包～ (｡･ω･｡)ﾉ' -Role Primary
             return $result
         }
     }
