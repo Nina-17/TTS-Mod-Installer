@@ -1,6 +1,6 @@
 # TTS 本地图包安装器设计
 
-当前实现版本：`v0.4.0`。旧版发布包继续保留。
+当前实现版本：`v0.5.2`。旧版发布包继续保留。
 
 ## 1. 目标
 
@@ -23,21 +23,21 @@
 
 使用 Windows PowerShell 5.1 编写，无需用户预装 Python、Node.js 或 .NET SDK。
 
-交付两个入口：
+交付一个面向用户的入口和一个脚本主体：
 
-- `Install-TTS-Mods.cmd`：用户双击的启动器，负责打开并保留命令行窗口。
+- `点我启动.cmd`：用户双击的启动器，负责打开并保留命令行窗口。
 - `TTSModInstaller.ps1`：路径探测、解压、校验和复制的主体。
 
 支持两种使用方式：
 
 ```text
 方式一：
-双击“Install-TTS-Mods.cmd”
+双击“点我启动.cmd”
 → 把图包文件夹或压缩包拖进窗口
 → 按 Enter
 
 方式二：
-把图包文件夹或压缩包直接拖到“Install-TTS-Mods.cmd”图标上
+把图包文件夹或压缩包直接拖到“点我启动.cmd”图标上
 ```
 
 可一次拖入多个图包；整个批次只判断一次目标目录和游戏运行状态，需要管理员权限时只请求一次 UAC。安装完成后仍可继续拖入下一批。
@@ -150,14 +150,14 @@ TTS 安装目录：D:\SteamLibrary\steamapps\common\Tabletop Simulator
 - 自动移除拖入命令行后路径两侧的引号。
 - 拒绝不存在的路径、快捷方式、网络 URL 和不支持的文件类型。
 - 文件夹可直接处理。
-- `.zip` 和 `.ttsmod` 都使用 PowerShell 内置解压；`.ttsmod` 按 ZIP 图包处理。
+- `.zip` 使用 `Expand-Archive`；`.ttsmod` 使用系统自带的 `System.IO.Compression.ZipFile`，避免 `Expand-Archive` 的扩展名限制。
 - `.7z`、`.rar` 优先使用发布包内置的官方 7-Zip 26.02 命令行组件；用户无需安装 7-Zip。
 - 内置组件按 Windows 原生架构选择 x86、x64 或 ARM64；每套包含未经修改的 `7z.exe` 和 `7z.dll`。
 - 执行前校验内置组件 SHA-256；组件缺失时可回退到系统已安装的 7-Zip，哈希不匹配时停止。
 - ZIP/TTSMOD/7Z/RAR 在解压前检查条目路径、文件数、声明的解压大小、异常压缩比和临时磁盘空间。
 - 7-Zip 返回退出码 `1` 时视为非致命警告：继续检查解压内容，安装成功后以黄色警告状态结束；退出码 `> 1` 仍视为解压失败。
 - 安全上限为 250000 个文件、250 GB 声明解压大小；大于 1 GB 且压缩比超过 1000:1 时拒绝处理。
-- 每个压缩包解压到 `%TEMP%\TTSModInstaller\<GUID>`，在 `finally` 中清理。
+- 每个压缩包解压到 `安装器目录\运行数据\Temp\Extract\<GUID>`，在 `finally` 中清理。
 
 ### 5.2 Mods 根目录识别
 
@@ -216,9 +216,9 @@ robocopy <源> <目标> /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /IS /IT
 
 Documents 模式通常不需要管理员权限；Steam 位于 `Program Files` 时，Game Data 模式可能需要。
 
-脚本先在目标目录做一次可删除的零字节写入测试。只有遇到拒绝访问时，才用 `RunAs` 重新启动主体脚本，并通过安装器专属临时交接文件带入整个批次和目标路径，避免用户再次拖入或多次确认 UAC。
+脚本先确认安装器目录可以创建便携运行数据，再在目标目录做一次可删除的零字节写入测试。只有目标拒绝访问时，才用 `RunAs` 重新启动主体脚本，并通过安装器专属交接文件带入整个批次和目标路径，避免用户再次拖入或多次确认 UAC。
 
-交接文件必须位于 `%TEMP%\TTSModInstaller-Handoff` 且符合随机 GUID 文件名；管理员子进程会把每个图包的退出码、目标和日志路径写回父进程。
+交接文件必须位于 `安装器目录\运行数据\Temp\Handoff` 且符合随机 GUID 文件名；管理员子进程会把每个图包的退出码、目标和日志路径写回父进程。
 
 ### 7.3 复制前检查
 
@@ -232,10 +232,10 @@ Documents 模式通常不需要管理员权限；Steam 位于 `Program Files` �
 
 若没有任何文件，直接停止。
 
-第一版不默认创建整包备份，因为大型图包可能非常大；可增加 `-BackupConflicts` 参数，只备份即将被覆盖的文件到：
+第一版不默认创建图包整包备份，因为大型图包可能非常大；可增加 `-BackupConflicts` 参数，只备份即将被覆盖的文件到：
 
 ```text
-%LOCALAPPDATA%\TTSModInstaller\Backups\<时间戳>
+安装器目录\运行数据\Backups\Mods-<时间戳>
 ```
 
 ### 7.4 日志和退出码
@@ -243,7 +243,7 @@ Documents 模式通常不需要管理员权限；Steam 位于 `Program Files` �
 日志目录：
 
 ```text
-%LOCALAPPDATA%\TTSModInstaller\Logs
+安装器目录\运行数据\Logs
 ```
 
 日志至少包含：
@@ -255,7 +255,7 @@ Documents 模式通常不需要管理员权限；Steam 位于 `Program Files` �
 - `robocopy` 摘要和最终退出码。
 - 临时目录清理结果。
 
-每扫描 1000 个文件输出一次进度。30 天前的日志以及 1 天前的异常解压/UAC 遗留文件会被尽力清理。
+每扫描 1000 个文件输出一次进度。30 天前的日志和更新备份，以及 1 天前的异常解压、UAC、更新遗留文件会被尽力清理。
 
 建议退出码：
 
@@ -268,6 +268,22 @@ Documents 模式通常不需要管理员权限；Steam 位于 `Program Files` �
 | 4 | 解压失败 |
 | 5 | 权限/UAC 失败 |
 | 8 | 文件复制失败 |
+| 42 | 更新助手已启动；CMD 启动器应直接退出且不暂停 |
+
+### 7.5 自动更新
+
+- 每次普通用户启动都请求 GitHub `releases/latest`；不做按天缓存。
+- GitHub API 直连失败时，以 `https://gh-proxy.com/` 加原始 GitHub URL 的形式自动重试。
+- API 经备用通道成功后，本次更新的 ZIP 和 SHA-256 文件直接沿用备用通道；资产直连单独失败时也会自动切换。
+- 内部 UAC 子进程、更新后的提权进程和 `-NonInteractive` 模式跳过检查，避免重复提示。
+- 只接受版本号高于当前版本的正式 Release。
+- 更新资产必须严格命名为 `TTSModInstaller-vX.Y.Z.zip`。
+- 使用 GitHub 资产 digest 和同名 `.sha256` 文件校验下载结果；两者同时存在时必须一致。
+- 主脚本只负责下载、校验和解压到临时目录。
+- 临时 `TTSModUpdater.ps1` 等待主脚本退出后，备份旧版核心文件、合并覆盖新版并重新启动。
+- 更新失败时尝试从 `安装器目录\运行数据\Backups` 恢复，不影响目标 Mods 内容。
+- 日志、临时解压、UAC 交接、更新下载和备份均不得写入 `%LOCALAPPDATA%` 或 Windows `%TEMP%`。
+- 网络或 API 错误只显示警告，继续运行当前版本。
 
 ## 8. 建议的脚本内部结构
 
@@ -284,6 +300,9 @@ Get-CopySummary
 Test-DestinationWriteAccess
 Invoke-ElevatedInstaller
 Invoke-ModCopy
+Get-LatestInstallerRelease
+Start-InstallerUpdate
+TTSModUpdater.ps1
 Write-InstallerLog
 ```
 
@@ -317,6 +336,10 @@ Write-InstallerLog
 | Program Files 无写权限 | 仅此时请求 UAC |
 | `robocopy` 返回 1–7 | 正确视为成功 |
 | `robocopy` 返回 8+ | 报错并保留日志 |
+| GitHub 无法访问 | 显示警告，继续使用当前版本 |
+| Release 版本更高 | 提供立即更新和本次跳过 |
+| 更新包哈希不一致 | 拒绝覆盖当前版本 |
+| 更新复制失败 | 恢复旧版并重新打开 |
 
 ## 10. 实现顺序
 

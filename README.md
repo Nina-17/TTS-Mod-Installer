@@ -1,4 +1,4 @@
-# TTS 本地图包安装器 v0.4.0
+# TTS 本地图包安装器 v0.5.2
 
 Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖到游戏当前使用的 Mods 目录。
 
@@ -8,7 +8,7 @@ Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖�
 
 ### 方法一：在窗口中拖入
 
-1. 双击 `Install-TTS-Mods.cmd`。
+1. 双击 `点我启动.cmd`。
 2. 把一个或多个图包文件夹/压缩包拖进命令行窗口。
 3. 按 Enter。
 
@@ -16,7 +16,7 @@ Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖�
 
 ### 方法二：直接拖到启动器
 
-把一个或多个图包文件夹/压缩包直接拖到 `Install-TTS-Mods.cmd` 图标上。
+把一个或多个图包文件夹/压缩包直接拖到 `点我启动.cmd` 图标上。
 
 批量安装时只探测一次目标位置；如果 Game Data 目录需要管理员权限，只请求一次 UAC。
 
@@ -29,6 +29,7 @@ Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖�
 - 自动识别 Documents 和 Game Data 两种 TTS Mods 保存位置。
 - 支持 Steam 默认库和其他磁盘上的附加 Steam 库。
 - 解压前检查路径安全、文件数量、声明大小、异常压缩比和临时磁盘空间。
+- 每次普通启动检查 GitHub 正式版更新，支持下载、校验、备份、替换和重新启动。
 
 安装器会根据 Windows 原生架构自动选择内置的 x86、x64 或 ARM64 组件，并在运行前校验 `7z.exe` 和 `7z.dll` 的 SHA-256。若完整发布包中的内置组件不存在，仍会尝试使用电脑中已安装的 7-Zip 作为后备。
 
@@ -85,6 +86,24 @@ Game Data 模式：
 
 安装器不会在存在冲突时采用注册表枚举到的第一个结果。
 
+## 自动更新
+
+安装器每次普通启动都会访问公开的 GitHub `releases/latest` 接口。GitHub 直连失败时会自动切换到 `gh-proxy.com`，Release 信息、更新 ZIP 和 SHA-256 文件都支持该备用通道。发现更高版本后：
+
+- 输入 `U`：下载对应的完整发布 ZIP，一键更新。
+- 输入 `S`：本次跳过，继续使用当前版本。
+- GitHub 和备用通道都失败：显示警告并继续运行当前版本。
+
+更新包必须同时满足以下条件才会安装：
+
+- Release 中存在名称匹配的 `TTSModInstaller-vX.Y.Z.zip`。
+- GitHub 资产 SHA-256 digest 或同名 `.sha256` 文件可用。
+- 下载结果哈希一致。
+- 解压后包含主脚本、CMD 启动器和更新助手。
+- 包内版本号与 Release 标签一致。
+
+更新助手会等待主安装器退出，备份当前核心文件，再合并覆盖新版；失败时尝试恢复旧版。更新不会删除安装器目录中的其他用户文件。内部提权子进程和 `-NonInteractive` 模式不会重复检查更新。
+
 ## 命令行
 
 也可以直接运行 PowerShell 主体：
@@ -100,24 +119,31 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TTSModInstaller.ps1 "D
 -DestinationPath <明确的目标 Mods 路径>
 -ForceWhileRunning
 -NonInteractive
+-SkipUpdateCheck
 ```
 
 `-DestinationPath` 主要用于测试或高级用法。使用它时，安装器不会再判断游戏当前的 Mods 设置。
 
 ## 日志
 
-日志保存在：
+安装器产生的运行数据全部保存在解压文件夹旁边：
 
 ```text
-%LOCALAPPDATA%\TTSModInstaller\Logs
+运行数据\
+├─ Logs\       安装和 robocopy 日志
+├─ Temp\       解压、UAC 交接和更新临时文件
+└─ Backups\    自动更新前的版本备份
 ```
 
-其中 `install-*.log` 是安装器流程日志，`robocopy-*.log` 是详细复制日志。
+安装器不再使用 `%LOCALAPPDATA%` 或 Windows `%TEMP%` 保存自身数据。把整个解压文件夹放在 D 盘，以上数据也都会留在 D 盘。请勿只移动启动器，更新时也不要删除正在使用的 `运行数据` 文件夹。
+
+`Logs\install-*.log` 是安装器流程日志，`Logs\robocopy-*.log` 是详细复制日志。
 
 安装器会尽力清理：
 
 - 30 天前的安装日志。
-- 1 天前因异常退出遗留的解压目录和 UAC 交接文件。
+- 30 天前的更新备份。
+- 1 天前因异常退出遗留的解压、UAC 交接和更新临时文件。
 
 当前安装正在使用的文件不会被清理。
 
@@ -137,6 +163,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TTSModInstaller.ps1 "D
 | 5 | 权限或 UAC 失败 |
 | 8 | 文件复制失败 |
 | 10 | 不是 Windows |
+| 42 | 更新助手已启动，CMD 启动器直接退出 |
 | 99 | 未分类异常 |
 
 更完整的设计和验收矩阵见 [DESIGN.md](DESIGN.md)。
@@ -149,10 +176,15 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TTSModInstaller.ps1 "D
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
 ```
 
-测试覆盖 TTS 配置解析与冲突处理、Steam 库解析、`robocopy` 退出码、多路径拖放、压缩包预检、ZIP/TTSMOD 安全检查与解压、7Z/RAR 技术列表解析与警告语义、Mods 包装目录识别和模拟批量端到端安装。
+测试覆盖更新版本与资产解析、TTS 配置解析与冲突处理、Steam 库解析、`robocopy` 退出码、多路径拖放、压缩包预检、ZIP/TTSMOD 安全检查与解压、7Z/RAR 技术列表解析与警告语义、Mods 包装目录识别和模拟批量端到端安装。
 
 ## 版本
 
+- `v0.5.2`：启动器改名为 `点我启动.cmd`；日志、临时解压、UAC 交接、更新下载和备份全部改为保存在安装器文件夹内的 `运行数据`。
+- `v0.5.1`：更新检查和发布资产下载支持 `gh-proxy.com`；GitHub 直连失败时自动切换并沿用备用通道。
+- `v0.5.0`：新增每次启动检查 GitHub Release，以及完整包下载、SHA-256 校验、备份、自动替换、失败恢复和重新启动。
+- `v0.4.2`：修复 Windows PowerShell 5.1 在转换泛型列表时可能出现的 `Argument types do not match` 错误。
+- `v0.4.1`：修复 `.ttsmod` 在 Windows PowerShell 5.1 中受 `.zip` 扩展名限制而无法解压的问题，并修正发布包 SHA-256 清单中的文件路径。
 - `v0.4.0`：新增 `.ttsmod` 支持，按普通 ZIP 图包完成预检、解压和 Mods 合并安装；不额外处理 `Saves`。
 - `v0.3.0`：内置官方便携 7-Zip 26.02，7Z/RAR 不再要求用户预装软件；支持 x86、x64 和 ARM64，并校验组件哈希。
 - `v0.2.0`：增加配置冲突处理、压缩包预检、多图包批次、文件选择窗口、扫描进度、UAC 结果回传和旧文件清理。

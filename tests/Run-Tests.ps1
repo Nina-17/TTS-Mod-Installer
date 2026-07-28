@@ -53,6 +53,56 @@ $jsonDocuments = '{"ConfigMods":{"Caching":true,"Location":0}}'
 $jsonGameData = '{"ConfigMods":{"Caching":true,"Location":1}}'
 
 Assert-Equal `
+    -Expected ([version]'0.5.2') `
+    -Actual (ConvertTo-InstallerVersion -VersionText 'v0.5.2') `
+    -Name '解析带 v 前缀的更新版本号'
+Assert-Equal `
+    -Expected $true `
+    -Actual ($null -eq (ConvertTo-InstallerVersion -VersionText 'v0.5-beta')) `
+    -Name '拒绝非正式三段版本号'
+
+$mockRelease = [pscustomobject]@{
+    tag_name = 'v0.5.2'
+    assets = @(
+        [pscustomobject]@{
+            name = 'TTSModInstaller-v0.5.2.zip'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.2.zip'
+            digest = ('sha256:' + ('a' * 64))
+        },
+        [pscustomobject]@{
+            name = 'TTSModInstaller-v0.5.2.zip.sha256'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.2.zip.sha256'
+        }
+    )
+}
+$mockZipAsset = Get-InstallerReleaseAsset `
+    -Release $mockRelease `
+    -AssetName 'TTSModInstaller-v0.5.2.zip'
+Assert-Equal `
+    -Expected 'TTSModInstaller-v0.5.2.zip' `
+    -Actual $mockZipAsset.name `
+    -Name '按完整文件名选择 GitHub Release 更新资产'
+$mockSourceCodeAsset = Get-InstallerReleaseAsset `
+    -Release $mockRelease `
+    -AssetName 'Source code.zip'
+Assert-Equal `
+    -Expected $true `
+    -Actual ($null -eq $mockSourceCodeAsset) `
+    -Name '不把 GitHub Source code ZIP 当作更新包'
+Assert-Equal `
+    -Expected 'https://gh-proxy.com/https://api.github.com/repos/Nina-17/TTS-Mod-Installer/releases/latest' `
+    -Actual (ConvertTo-InstallerProxyUrl -Url $script:UpdateApiUrl) `
+    -Name '生成 gh-proxy.com API 备用地址'
+Assert-Equal `
+    -Expected 'https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.2/package.zip' `
+    -Actual (ConvertTo-InstallerProxyUrl -Url 'https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.2/package.zip') `
+    -Name '生成 gh-proxy.com Release 资产备用地址'
+Assert-Equal `
+    -Expected $true `
+    -Actual ($null -eq (ConvertTo-InstallerProxyUrl -Url 'file:///C:/package.zip')) `
+    -Name '代理地址只接受 HTTPS 原始链接'
+
+Assert-Equal `
     -Expected 'Documents' `
     -Actual (Get-ConfigModeFromRawValue -RawValue $jsonDocuments) `
     -Name '解析字符串形式的 Documents 配置'
@@ -129,8 +179,31 @@ Assert-Equal `
 
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('TTSModInstallerTests-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $testRoot | Out-Null
+$previousInstallerDataRoot = $script:InstallerDataRoot
+$script:InstallerDataRoot = Join-Path $testRoot '运行数据'
 
 try {
+    Assert-Equal `
+        -Expected (Join-Path $testRoot '运行数据') `
+        -Actual (Get-InstallerDataRoot) `
+        -Name '运行数据根目录跟随安装器文件夹'
+    Assert-Equal `
+        -Expected (Join-Path (Join-Path (Join-Path $testRoot '运行数据') 'Temp') 'Extract') `
+        -Actual (Get-InstallerExtractionRoot) `
+        -Name '解压临时目录位于便携运行数据内'
+    Assert-Equal `
+        -Expected $true `
+        -Actual (Test-Path -LiteralPath (Join-Path $projectRoot '点我启动.cmd') -PathType Leaf) `
+        -Name '发布目录提供醒目的中文启动器'
+
+    $mockChecksumPath = Join-Path $testRoot 'mock-update.zip.sha256'
+    (('b' * 64) + '  mock-update.zip') |
+        Set-Content -LiteralPath $mockChecksumPath -Encoding ASCII
+    Assert-Equal `
+        -Expected ('b' * 64) `
+        -Actual (Get-InstallerChecksumHash -ChecksumPath $mockChecksumPath) `
+        -Name '解析裸文件名 SHA-256 更新清单'
+
     $mockBundledRoot = Join-Path $testRoot 'Bundled7Zip'
     $mockX64Directory = Join-Path $mockBundledRoot 'x64'
     $mockX86Directory = Join-Path $mockBundledRoot 'x86'
@@ -267,7 +340,10 @@ try {
             -Expected $true `
             -Actual (Test-Path -LiteralPath (Join-Path (Join-Path $resolvedTtsmodMods 'Images') 'zip-asset.txt') -PathType Leaf) `
             -Name 'TTSMOD 按 ZIP 解压后识别 Mods'
-        Assert-Equal -Expected 'Expand-Archive' -Actual $expandedTtsmod.Tool -Name 'TTSMOD 使用 ZIP 解压路径'
+        Assert-Equal `
+            -Expected 'System.IO.Compression.ZipFile' `
+            -Actual $expandedTtsmod.Tool `
+            -Name 'TTSMOD 使用不受扩展名限制的 ZIP 解压路径'
     }
     finally {
         $expandedTtsmodTemporaryRoot = $expandedTtsmod.TemporaryRoot
@@ -346,7 +422,7 @@ try {
     Assert-Equal -Expected 2 -Actual $draggedPaths.Count -Name '解析一次拖入的多个带空格路径'
     Assert-Equal -Expected $secondDraggedPath -Actual $draggedPaths[1] -Name '保留第二个拖入路径'
 
-    $handoffRoot = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller-Handoff'
+    $handoffRoot = Get-InstallerHandoffRoot
     New-Item -ItemType Directory -Path $handoffRoot -Force | Out-Null
     $handoffId = [guid]::NewGuid().ToString('N')
     $requestPath = Join-Path $handoffRoot ($handoffId + '.request.json')
@@ -401,42 +477,36 @@ try {
         return 1
     }
 
-    $previousLocalAppData = $env:LOCALAPPDATA
-    $env:LOCALAPPDATA = Join-Path $testRoot 'LocalAppData'
-    try {
-        $installResult = Invoke-OnePackageInstall `
-            -InputPath $endToEndPackage `
-            -ExplicitDestination $endToEndTarget `
-            -NoPrompt
-        Assert-Equal -Expected 0 -Actual $installResult -Name '显式目标端到端安装流程'
-        Assert-Equal `
-            -Expected 'new-content' `
-            -Actual ((Get-Content -LiteralPath (Join-Path (Join-Path $endToEndTarget 'Images') 'asset.txt') -Raw).Trim()) `
-            -Name '端到端流程覆盖同名文件'
-        Assert-Equal `
-            -Expected 'keep-me' `
-            -Actual ((Get-Content -LiteralPath (Join-Path $endToEndTarget 'unrelated.txt') -Raw).Trim()) `
-            -Name '端到端流程保留无关文件'
+    $installResult = Invoke-OnePackageInstall `
+        -InputPath $endToEndPackage `
+        -ExplicitDestination $endToEndTarget `
+        -NoPrompt
+    Assert-Equal -Expected 0 -Actual $installResult -Name '显式目标端到端安装流程'
+    Assert-Equal `
+        -Expected 'new-content' `
+        -Actual ((Get-Content -LiteralPath (Join-Path (Join-Path $endToEndTarget 'Images') 'asset.txt') -Raw).Trim()) `
+        -Name '端到端流程覆盖同名文件'
+    Assert-Equal `
+        -Expected 'keep-me' `
+        -Actual ((Get-Content -LiteralPath (Join-Path $endToEndTarget 'unrelated.txt') -Raw).Trim()) `
+        -Name '端到端流程保留无关文件'
 
-        $secondPackage = Join-Path $testRoot 'SecondPackage'
-        $secondPackageModels = Join-Path (Join-Path $secondPackage 'Mods') 'Models'
-        New-Item -ItemType Directory -Path $secondPackageModels -Force | Out-Null
-        'second-content' | Set-Content -LiteralPath (Join-Path $secondPackageModels 'second.txt') -Encoding UTF8
-        $batchResult = Invoke-PackageBatch `
-            -InputPaths @($endToEndPackage, $secondPackage) `
-            -ExplicitDestination $endToEndTarget `
-            -NoPrompt
-        Assert-Equal -Expected 0 -Actual $batchResult -Name '多图包批次安装流程'
-        Assert-Equal `
-            -Expected 'second-content' `
-            -Actual ((Get-Content -LiteralPath (Join-Path (Join-Path $endToEndTarget 'Models') 'second.txt') -Raw).Trim()) `
-            -Name '多图包批次写入第二个图包'
-    }
-    finally {
-        $env:LOCALAPPDATA = $previousLocalAppData
-    }
+    $secondPackage = Join-Path $testRoot 'SecondPackage'
+    $secondPackageModels = Join-Path (Join-Path $secondPackage 'Mods') 'Models'
+    New-Item -ItemType Directory -Path $secondPackageModels -Force | Out-Null
+    'second-content' | Set-Content -LiteralPath (Join-Path $secondPackageModels 'second.txt') -Encoding UTF8
+    $batchResult = Invoke-PackageBatch `
+        -InputPaths @($endToEndPackage, $secondPackage) `
+        -ExplicitDestination $endToEndTarget `
+        -NoPrompt
+    Assert-Equal -Expected 0 -Actual $batchResult -Name '多图包批次安装流程'
+    Assert-Equal `
+        -Expected 'second-content' `
+        -Actual ((Get-Content -LiteralPath (Join-Path (Join-Path $endToEndTarget 'Models') 'second.txt') -Raw).Trim()) `
+        -Name '多图包批次写入第二个图包'
 }
 finally {
+    $script:InstallerDataRoot = $previousInstallerDataRoot
     if (Test-Path -LiteralPath $testRoot) {
         Remove-Item -LiteralPath $testRoot -Recurse -Force
     }

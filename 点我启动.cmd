@@ -8,7 +8,7 @@ if not exist "%~dp0TTSModInstaller.ps1" (
     echo   ❌ 没有找到 TTSModInstaller.ps1  ^(╥﹏╥^)
     echo.
     echo   如果你正在压缩包预览窗口中运行，请先选择“全部解压”，
-    echo   然后在解压后的文件夹中双击 Install-TTS-Mods.cmd。
+    echo   然后在解压后的文件夹中双击“点我启动.cmd”。
     echo.
     echo   按任意键退出……
     pause >nul
@@ -17,6 +17,10 @@ if not exist "%~dp0TTSModInstaller.ps1" (
 
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%~dp0TTSModInstaller.ps1" %*
 set "installer_exit_code=%ERRORLEVEL%"
+
+if "%installer_exit_code%"=="42" (
+    exit /b 0
+)
 
 echo.
 if not "%installer_exit_code%"=="0" (

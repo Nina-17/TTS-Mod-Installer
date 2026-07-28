@@ -11,13 +11,14 @@ param(
     [switch]$Elevated,
     [switch]$ForceWhileRunning,
     [switch]$NonInteractive,
+    [switch]$SkipUpdateCheck,
     [string]$HandoffPath
 )
 
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$script:InstallerVersion = '0.4.0'
+$script:InstallerVersion = '0.5.2'
 $script:Bundled7ZipVersion = '26.02'
 $script:Bundled7ZipHashes = @{
     'x86\7z.exe' = '285e5220d6d4240b6a4bdb6357d427e457313376e3464d3cb973637a384ed02a'
@@ -34,6 +35,11 @@ $script:InstallerScriptPath = $PSCommandPath
 $script:MaintenanceCompleted = $false
 $script:LastInstallResult = $null
 $script:LastBatchResults = @()
+$script:InstallerDataRoot = Join-Path $PSScriptRoot '运行数据'
+$script:UpdateApiUrl = 'https://api.github.com/repos/Nina-17/TTS-Mod-Installer/releases/latest'
+$script:UpdateProxyPrefix = 'https://gh-proxy.com/'
+$script:UpdateDownloadChannel = 'GitHub'
+$script:UpdateExitCode = 42
 
 function Throw-InstallerError {
     param(
@@ -50,11 +56,19 @@ function Throw-InstallerError {
 }
 
 function Get-InstallerDataRoot {
-    if (-not [string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) {
-        return (Join-Path $env:LOCALAPPDATA 'TTSModInstaller')
-    }
+    return $script:InstallerDataRoot
+}
 
-    return (Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller')
+function Get-InstallerExtractionRoot {
+    return (Join-Path (Join-Path (Get-InstallerDataRoot) 'Temp') 'Extract')
+}
+
+function Get-InstallerHandoffRoot {
+    return (Join-Path (Join-Path (Get-InstallerDataRoot) 'Temp') 'Handoff')
+}
+
+function Get-InstallerUpdateRoot {
+    return (Join-Path (Join-Path (Get-InstallerDataRoot) 'Temp') 'Update')
 }
 
 function Test-PathIsUnderRoot {
@@ -85,14 +99,24 @@ function Remove-StaleInstallerData {
             Directories = $false
         },
         @{
-            Path = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller'
+            Path = Get-InstallerExtractionRoot
             Before = (Get-Date).AddDays(-1)
             Directories = $true
         },
         @{
-            Path = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller-Handoff'
+            Path = Get-InstallerHandoffRoot
             Before = (Get-Date).AddDays(-1)
             Directories = $false
+        },
+        @{
+            Path = Get-InstallerUpdateRoot
+            Before = (Get-Date).AddDays(-1)
+            Directories = $true
+        },
+        @{
+            Path = Join-Path (Get-InstallerDataRoot) 'Backups'
+            Before = (Get-Date).AddDays(-30)
+            Directories = $true
         }
     )
 
@@ -237,6 +261,377 @@ function ConvertTo-DisplaySize {
     return ('{0} B' -f $Bytes)
 }
 
+function ConvertTo-InstallerVersion {
+    param([string]$VersionText)
+
+    if ([string]::IsNullOrWhiteSpace($VersionText)) {
+        return $null
+    }
+
+    $normalized = $VersionText.Trim()
+    if ($normalized.StartsWith('v', [StringComparison]::OrdinalIgnoreCase)) {
+        $normalized = $normalized.Substring(1)
+    }
+    if ($normalized -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+        return $null
+    }
+
+    try {
+        return [version]$normalized
+    }
+    catch {
+        return $null
+    }
+}
+
+function Get-InstallerReleaseAsset {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$Release,
+
+        [Parameter(Mandatory = $true)]
+        [string]$AssetName
+    )
+
+    foreach ($asset in @($Release.assets)) {
+        if (([string]$asset.name) -ieq $AssetName) {
+            return $asset
+        }
+    }
+    return $null
+}
+
+function Get-InstallerChecksumHash {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ChecksumPath
+    )
+
+    foreach ($line in (Get-Content -LiteralPath $ChecksumPath)) {
+        if ([string]$line -match '^\s*([a-fA-F0-9]{64})(?:\s+.*)?$') {
+            return $matches[1].ToLowerInvariant()
+        }
+    }
+    return $null
+}
+
+function ConvertTo-InstallerProxyUrl {
+    param([string]$Url)
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return $null
+    }
+    if ($Url.StartsWith($script:UpdateProxyPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+        return $Url
+    }
+
+    $parsedUrl = $null
+    if (-not [Uri]::TryCreate($Url, [UriKind]::Absolute, [ref]$parsedUrl)) {
+        return $null
+    }
+    if ($parsedUrl.Scheme -ine 'https') {
+        return $null
+    }
+    return ($script:UpdateProxyPrefix + $Url)
+}
+
+function Get-InstallerUpdateHeaders {
+    return @{
+        Accept = 'application/vnd.github+json'
+        'User-Agent' = 'TTS-Mod-Installer'
+        'X-GitHub-Api-Version' = '2022-11-28'
+    }
+}
+
+function Get-LatestInstallerRelease {
+    $headers = Get-InstallerUpdateHeaders
+
+    if ([Net.ServicePointManager]::SecurityProtocol -band [Net.SecurityProtocolType]::Tls12) {
+        # TLS 1.2 is already enabled.
+    }
+    else {
+        [Net.ServicePointManager]::SecurityProtocol = `
+            [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    }
+
+    $script:UpdateDownloadChannel = 'GitHub'
+    try {
+        return (Invoke-RestMethod `
+            -Uri $script:UpdateApiUrl `
+            -Headers $headers `
+            -Method Get `
+            -TimeoutSec 10 `
+            -ErrorAction Stop)
+    }
+    catch {
+        $directError = $_.Exception.Message
+        $proxyUrl = ConvertTo-InstallerProxyUrl -Url $script:UpdateApiUrl
+        if ([string]::IsNullOrWhiteSpace($proxyUrl)) {
+            throw
+        }
+
+        Write-InstallerStatus -Level WARN -Message 'GitHub 直连失败，正在切换 gh-proxy.com 通道……'
+        try {
+            $release = Invoke-RestMethod `
+                -Uri $proxyUrl `
+                -Headers $headers `
+                -Method Get `
+                -TimeoutSec 15 `
+                -ErrorAction Stop
+            $script:UpdateDownloadChannel = 'GhProxy'
+            Write-InstallerStatus -Level OK -Message 'gh-proxy.com 通道连接成功。'
+            return $release
+        }
+        catch {
+            throw (
+                "GitHub 直连失败：{0}；gh-proxy.com 也失败：{1}" -f
+                $directError,
+                $_.Exception.Message
+            )
+        }
+    }
+}
+
+function Save-InstallerUpdateAsset {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Url,
+
+        [Parameter(Mandatory = $true)]
+        [string]$OutFile,
+
+        [int]$TimeoutSec = 60
+    )
+
+    $proxyUrl = ConvertTo-InstallerProxyUrl -Url $Url
+    if ([string]::IsNullOrWhiteSpace($proxyUrl)) {
+        throw ("无法生成 gh-proxy.com 下载地址：{0}" -f $Url)
+    }
+
+    if ($script:UpdateDownloadChannel -eq 'GhProxy') {
+        $attempts = @(
+            [pscustomobject]@{ Name = 'gh-proxy.com'; Url = $proxyUrl }
+        )
+    }
+    else {
+        $attempts = @(
+            [pscustomobject]@{ Name = 'GitHub'; Url = $Url },
+            [pscustomobject]@{ Name = 'gh-proxy.com'; Url = $proxyUrl }
+        )
+    }
+
+    $errors = @()
+    foreach ($attempt in $attempts) {
+        if (Test-Path -LiteralPath $OutFile) {
+            Remove-Item -LiteralPath $OutFile -Force -ErrorAction SilentlyContinue
+        }
+        try {
+            Invoke-WebRequest `
+                -Uri ([string]$attempt.Url) `
+                -OutFile $OutFile `
+                -UseBasicParsing `
+                -Headers @{ 'User-Agent' = 'TTS-Mod-Installer' } `
+                -TimeoutSec $TimeoutSec `
+                -ErrorAction Stop | Out-Null
+            if ($attempt.Name -eq 'gh-proxy.com') {
+                $script:UpdateDownloadChannel = 'GhProxy'
+            }
+            return
+        }
+        catch {
+            $errors += ("{0}：{1}" -f $attempt.Name, $_.Exception.Message)
+            if ($attempt.Name -eq 'GitHub') {
+                Write-InstallerStatus -Level WARN -Message 'GitHub 下载失败，正在切换 gh-proxy.com 通道……'
+            }
+        }
+    }
+
+    throw ("更新资产下载失败（{0}）" -f ($errors -join '；'))
+}
+
+function Start-InstallerUpdate {
+    param(
+        [Parameter(Mandatory = $true)]
+        [psobject]$Release,
+
+        [Parameter(Mandatory = $true)]
+        [version]$TargetVersion,
+
+        [string[]]$RelaunchArguments
+    )
+
+    $tagName = [string]$Release.tag_name
+    $zipName = 'TTSModInstaller-{0}.zip' -f $tagName
+    $checksumName = $zipName + '.sha256'
+    $zipAsset = Get-InstallerReleaseAsset -Release $Release -AssetName $zipName
+    $checksumAsset = Get-InstallerReleaseAsset -Release $Release -AssetName $checksumName
+    if ($null -eq $zipAsset) {
+        Write-InstallerStatus -Level WARN -Message ("Release 中没有找到更新包：{0}" -f $zipName)
+        return $false
+    }
+
+    $updateBase = Get-InstallerUpdateRoot
+    $updateRoot = Join-Path $updateBase ([guid]::NewGuid().ToString('N'))
+    $zipPath = Join-Path $updateRoot $zipName
+    $checksumPath = Join-Path $updateRoot $checksumName
+    $packageDirectory = Join-Path $updateRoot 'Package'
+    $requestPath = Join-Path $updateRoot 'update-request.json'
+    $temporaryUpdater = Join-Path $updateRoot 'TTSModUpdater.ps1'
+    $oldProgressPreference = $ProgressPreference
+
+    try {
+        New-Item -ItemType Directory -Path $updateRoot -Force | Out-Null
+        $ProgressPreference = 'SilentlyContinue'
+        Write-InstallerStatus -Message ("⬇️ 正在下载 {0}……" -f $zipName)
+        Save-InstallerUpdateAsset `
+            -Url ([string]$zipAsset.browser_download_url) `
+            -OutFile $zipPath `
+            -TimeoutSec 60
+
+        $expectedHash = $null
+        if ($zipAsset.PSObject.Properties['digest']) {
+            $digest = [string]$zipAsset.digest
+            if ($digest -match '^sha256:([a-fA-F0-9]{64})$') {
+                $expectedHash = $matches[1].ToLowerInvariant()
+            }
+        }
+
+        if ($null -ne $checksumAsset) {
+            Save-InstallerUpdateAsset `
+                -Url ([string]$checksumAsset.browser_download_url) `
+                -OutFile $checksumPath `
+                -TimeoutSec 30
+            $checksumHash = Get-InstallerChecksumHash -ChecksumPath $checksumPath
+            if ([string]::IsNullOrWhiteSpace($checksumHash)) {
+                throw '更新包的 SHA-256 清单无法解析。'
+            }
+            if (-not [string]::IsNullOrWhiteSpace($expectedHash) -and $checksumHash -ne $expectedHash) {
+                throw 'GitHub 资产摘要与 SHA-256 清单不一致。'
+            }
+            $expectedHash = $checksumHash
+        }
+
+        if ([string]::IsNullOrWhiteSpace($expectedHash)) {
+            throw 'Release 没有提供可用的 SHA-256 校验值。'
+        }
+
+        $actualHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+        if ($actualHash -ne $expectedHash) {
+            throw '下载的更新包 SHA-256 校验失败。'
+        }
+        Write-InstallerStatus -Level OK -Message '更新包 SHA-256 校验通过。'
+
+        New-Item -ItemType Directory -Path $packageDirectory | Out-Null
+        Expand-Archive -LiteralPath $zipPath -DestinationPath $packageDirectory -Force
+
+        foreach ($requiredFile in @('TTSModInstaller.ps1', '点我启动.cmd', 'TTSModUpdater.ps1')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $packageDirectory $requiredFile) -PathType Leaf)) {
+                throw ("更新包缺少必要文件：{0}" -f $requiredFile)
+            }
+        }
+
+        $newScriptText = Get-Content -LiteralPath (Join-Path $packageDirectory 'TTSModInstaller.ps1') -Raw
+        $versionMatch = [regex]::Match(
+            $newScriptText,
+            'InstallerVersion\s*=\s*[''"]([^''"]+)[''"]'
+        )
+        if (-not $versionMatch.Success) {
+            throw '无法读取更新包内的安装器版本。'
+        }
+        $packageVersion = ConvertTo-InstallerVersion -VersionText $versionMatch.Groups[1].Value
+        if ($null -eq $packageVersion -or $packageVersion -ne $TargetVersion) {
+            throw '更新包内版本与 GitHub Release 标签不一致。'
+        }
+
+        Copy-Item `
+            -LiteralPath (Join-Path $packageDirectory 'TTSModUpdater.ps1') `
+            -Destination $temporaryUpdater `
+            -Force
+
+        $updatedRelaunchArguments = @($RelaunchArguments)
+        $updatedRelaunchArguments += '-SkipUpdateCheck'
+        $request = [ordered]@{
+            ParentProcessId = $PID
+            InstallDirectory = $PSScriptRoot
+            PackageDirectory = $packageDirectory
+            RelaunchPath = (Join-Path $PSScriptRoot 'TTSModInstaller.ps1')
+            RelaunchArguments = $updatedRelaunchArguments
+            CurrentVersion = $script:InstallerVersion
+            TargetVersion = $TargetVersion.ToString()
+            DataRoot = (Get-InstallerDataRoot)
+            UpdateRoot = $updateRoot
+        }
+        $request | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $requestPath -Encoding UTF8
+
+        $updaterArguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "{0}" -RequestPath "{1}"' -f `
+            $temporaryUpdater,
+            $requestPath
+        $startParameters = @{
+            FilePath = 'powershell.exe'
+            ArgumentList = $updaterArguments
+            PassThru = $true
+        }
+        if (-not (Test-DestinationWriteAccess -Path $PSScriptRoot)) {
+            Write-InstallerStatus -Level WARN -Message '安装器目录需要管理员权限，即将请求 Windows UAC。'
+            $startParameters['Verb'] = 'RunAs'
+        }
+
+        Start-Process @startParameters | Out-Null
+        Write-InstallerStatus -Level OK -Message '更新助手已启动，安装器即将重新打开～ ✨'
+        return $true
+    }
+    catch {
+        Write-InstallerStatus -Level WARN -Message ("自动更新没有完成：{0}" -f $_.Exception.Message)
+        if (Test-Path -LiteralPath $updateRoot) {
+            Remove-Item -LiteralPath $updateRoot -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        return $false
+    }
+    finally {
+        $ProgressPreference = $oldProgressPreference
+    }
+}
+
+function Invoke-InstallerUpdateCheck {
+    param([string[]]$RelaunchArguments)
+
+    Write-InstallerStatus -Message '🌐 正在检查 GitHub 更新……'
+    try {
+        $release = Get-LatestInstallerRelease
+        $currentVersion = ConvertTo-InstallerVersion -VersionText $script:InstallerVersion
+        $latestVersion = ConvertTo-InstallerVersion -VersionText ([string]$release.tag_name)
+        if ($null -eq $currentVersion -or $null -eq $latestVersion) {
+            Write-InstallerStatus -Level WARN -Message '版本号无法解析，已跳过本次更新检查。'
+            return $false
+        }
+        if ($latestVersion -le $currentVersion) {
+            Write-InstallerStatus -Level OK -Message ("已经是最新版：v{0}" -f $script:InstallerVersion)
+            return $false
+        }
+
+        Write-InstallerSection `
+            -Icon '🆕' `
+            -Title ("发现新版本 v{0}！" -f $latestVersion) `
+            -Subtitle ("当前版本 v{0}，可以一键更新啦 (ﾉ◕ヮ◕)ﾉ*:･ﾟ✧" -f $currentVersion)
+        Write-Host '      [U] 立即下载并更新' -ForegroundColor Green
+        Write-Host '      [S] 本次跳过，继续安装图包' -ForegroundColor Yellow
+        $choice = (Read-Host '  请选择').Trim()
+        if ($choice -ine 'U') {
+            Write-InstallerStatus -Message '本次先不更新，继续使用当前版本。'
+            return $false
+        }
+
+        return (Start-InstallerUpdate `
+            -Release $release `
+            -TargetVersion $latestVersion `
+            -RelaunchArguments $RelaunchArguments)
+    }
+    catch {
+        Write-InstallerStatus -Level WARN -Message ("暂时无法检查更新，将继续运行：{0}" -f $_.Exception.Message)
+        return $false
+    }
+}
+
 function Resolve-InstallerInputPath {
     param(
         [Parameter(Mandatory = $true)]
@@ -319,7 +714,7 @@ function Get-SteamLibrariesFromVdf {
         }
     }
 
-    return @($results)
+    return $results.ToArray()
 }
 
 function Get-SteamRootCandidates {
@@ -354,7 +749,7 @@ function Get-SteamRootCandidates {
         $candidates.Add((Join-Path $env:ProgramFiles 'Steam'))
     }
 
-    return @($candidates)
+    return $candidates.ToArray()
 }
 
 function Get-TTSInstallPath {
@@ -470,7 +865,7 @@ function Get-ConfigModeFromRawValue {
         $textCandidates.Add([string]$RawValue)
     }
 
-    $initialCandidates = @($textCandidates)
+    $initialCandidates = $textCandidates.ToArray()
     foreach ($candidate in $initialCandidates) {
         $compact = ($candidate -replace "`0", '').Trim()
         if ($compact -match '^[A-Za-z0-9+/]+={0,2}$' -and $compact.Length -ge 8 -and ($compact.Length % 4) -eq 0) {
@@ -569,7 +964,7 @@ function Get-TTSModLocationSetting {
         return $null
     }
 
-    return (Resolve-TTSConfigModeCandidates -ParsedSettings @($parsedSettings))
+    return (Resolve-TTSConfigModeCandidates -ParsedSettings ($parsedSettings.ToArray()))
 }
 
 function Resolve-TTSModsDestination {
@@ -814,7 +1209,7 @@ function Invoke-ElevatedInstaller {
         [switch]$NoPrompt
     )
 
-    $handoffDirectory = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller-Handoff'
+    $handoffDirectory = Get-InstallerHandoffRoot
     New-Item -ItemType Directory -Path $handoffDirectory -Force | Out-Null
     $handoffId = [guid]::NewGuid().ToString('N')
     $handoffFile = Join-Path $handoffDirectory ($handoffId + '.request.json')
@@ -1212,7 +1607,7 @@ function Expand-ModPackage {
         Throw-InstallerError -Message ("不支持的文件类型：{0}。支持文件夹、ZIP、TTSMOD、7Z 和 RAR。" -f $extension) -ExitCode 2
     }
 
-    $tempBase = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller'
+    $tempBase = Get-InstallerExtractionRoot
     New-Item -ItemType Directory -Path $tempBase -Force | Out-Null
     $tempRoot = $null
     $hadArchiveWarnings = $false
@@ -1220,7 +1615,12 @@ function Expand-ModPackage {
     try {
         if ($extension -in @('.zip', '.ttsmod')) {
             $packageInfo = Get-ZipPackageInfo -ArchivePath $item.FullName
-            $tool = 'Expand-Archive'
+            if ($extension -eq '.zip') {
+                $tool = 'Expand-Archive'
+            }
+            else {
+                $tool = 'System.IO.Compression.ZipFile'
+            }
         }
         else {
             $sevenZip = Find-7ZipExecutable
@@ -1249,9 +1649,13 @@ function Expand-ModPackage {
         $tempRoot = Join-Path $tempBase ([guid]::NewGuid().ToString('N'))
         New-Item -ItemType Directory -Path $tempRoot | Out-Null
 
-        if ($extension -in @('.zip', '.ttsmod')) {
-            Write-InstallerStatus -Message ("📦 正在解压 {0} 图包……" -f $extension.ToUpperInvariant())
+        if ($extension -eq '.zip') {
+            Write-InstallerStatus -Message '📦 正在解压 .ZIP 图包……'
             Expand-Archive -LiteralPath $item.FullName -DestinationPath $tempRoot -Force
+        }
+        elseif ($extension -eq '.ttsmod') {
+            Write-InstallerStatus -Message '📦 正在解压 .TTSMOD 图包……'
+            [IO.Compression.ZipFile]::ExtractToDirectory($item.FullName, $tempRoot)
         }
         else {
             Write-InstallerStatus -Message ("📦 正在使用 7-Zip 解压 {0}……" -f $extension.ToUpperInvariant())
@@ -1509,7 +1913,7 @@ function Remove-OwnedTemporaryRoot {
         return
     }
 
-    $expectedBase = (Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller').TrimEnd('\', '/')
+    $expectedBase = (Get-InstallerExtractionRoot).TrimEnd('\', '/')
     $fullTemporaryRoot = [IO.Path]::GetFullPath($TemporaryRoot).TrimEnd('\', '/')
     $expectedPrefix = $expectedBase + [IO.Path]::DirectorySeparatorChar
     if (-not $fullTemporaryRoot.StartsWith($expectedPrefix, [StringComparison]::OrdinalIgnoreCase)) {
@@ -1550,7 +1954,7 @@ function Read-InstallerHandoff {
         [string]$Path
     )
 
-    $handoffRoot = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller-Handoff'
+    $handoffRoot = Get-InstallerHandoffRoot
     $leafName = [IO.Path]::GetFileName($Path)
     if (
         -not (Test-PathIsUnderRoot -Path $Path -Root $handoffRoot) -or
@@ -1581,7 +1985,7 @@ function Write-InstallerHandoffResult {
         [int]$ExitCode
     )
 
-    $handoffRoot = Join-Path ([IO.Path]::GetTempPath()) 'TTSModInstaller-Handoff'
+    $handoffRoot = Get-InstallerHandoffRoot
     $leafName = [IO.Path]::GetFileName($Path)
     if (
         -not (Test-PathIsUnderRoot -Path $Path -Root $handoffRoot) -or
@@ -1787,7 +2191,7 @@ function ConvertFrom-InstallerInputLine {
             $results.Add($value)
         }
     }
-    return @($results)
+    return $results.ToArray()
 }
 
 function Select-ModPackageFiles {
@@ -1961,6 +2365,12 @@ function Invoke-InstallerEntryPoint {
     }
 
     Write-InstallerBanner
+    if (-not (Test-DestinationWriteAccess -Path (Get-InstallerDataRoot))) {
+        Write-InstallerStatus -Level ERROR -Message (
+            '安装器所在文件夹不可写。请把整个解压文件夹移动到有写入权限的位置后重试。'
+        )
+        return 5
+    }
 
     $effectivePackagePaths = @($PackagePath)
     $effectiveDestinationPath = $DestinationPath
@@ -1984,6 +2394,36 @@ function Invoke-InstallerEntryPoint {
     }
 
     $effectivePackagePaths = @($effectivePackagePaths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+
+    $shouldCheckForUpdates = (
+        -not $SkipUpdateCheck -and
+        -not $Elevated -and
+        [string]::IsNullOrWhiteSpace($HandoffPath) -and
+        -not $effectiveNonInteractive
+    )
+    if ($shouldCheckForUpdates) {
+        $updateRelaunchArguments = @()
+        foreach ($effectivePackagePath in $effectivePackagePaths) {
+            $updateRelaunchArguments += [string]$effectivePackagePath
+        }
+        if ($LocationMode -ne 'Auto') {
+            $updateRelaunchArguments += '-LocationMode'
+            $updateRelaunchArguments += $LocationMode
+        }
+        if (-not [string]::IsNullOrWhiteSpace($effectiveDestinationPath)) {
+            $updateRelaunchArguments += '-DestinationPath'
+            $updateRelaunchArguments += $effectiveDestinationPath
+        }
+        if ($effectiveForceWhileRunning) {
+            $updateRelaunchArguments += '-ForceWhileRunning'
+        }
+
+        $updateStarted = Invoke-InstallerUpdateCheck -RelaunchArguments $updateRelaunchArguments
+        if ($updateStarted) {
+            return $script:UpdateExitCode
+        }
+    }
+
     if ($effectivePackagePaths.Count -gt 0) {
         $batchResult = Invoke-PackageBatch `
             -InputPaths $effectivePackagePaths `
