@@ -1,4 +1,4 @@
-# TTS 本地图包安装器 v0.5.2
+# TTS 本地图包安装器 v0.5.3
 
 Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖到游戏当前使用的 Mods 目录。
 
@@ -139,6 +139,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TTSModInstaller.ps1 "D
 
 `Logs\install-*.log` 是安装器流程日志，`Logs\robocopy-*.log` 是详细复制日志。
 
+复制图包时，控制台显示单行循环进度条和轮换颜文字，不再逐文件刷屏；完整文件列表、摘要和退出码仍保存在 `robocopy-*.log` 中。进度条用于表明程序仍在工作，不显示虚假的整批百分比。
+
 安装器会尽力清理：
 
 - 30 天前的安装日志。
@@ -180,6 +182,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
 
 ## 版本
 
+- `v0.5.3`：用单行循环进度条和可爱颜文字替代 `robocopy` 的逐文件刷屏，保留完整 Unicode 复制日志。
 - `v0.5.2`：启动器改名为 `点我启动.cmd`；日志、临时解压、UAC 交接、更新下载和备份全部改为保存在安装器文件夹内的 `运行数据`。
 - `v0.5.1`：更新检查和发布资产下载支持 `gh-proxy.com`；GitHub 直连失败时自动切换并沿用备用通道。
 - `v0.5.0`：新增每次启动检查 GitHub Release，以及完整包下载、SHA-256 校验、备份、自动替换、失败恢复和重新启动。

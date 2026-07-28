@@ -18,7 +18,7 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$script:InstallerVersion = '0.5.2'
+$script:InstallerVersion = '0.5.3'
 $script:Bundled7ZipVersion = '26.02'
 $script:Bundled7ZipHashes = @{
     'x86\7z.exe' = '285e5220d6d4240b6a4bdb6357d427e457313376e3464d3cb973637a384ed02a'
@@ -1861,6 +1861,75 @@ function Test-RobocopyExitCode {
     return ($ExitCode -ge 0 -and $ExitCode -lt 8)
 }
 
+function Get-ModCopyRobocopyArguments {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourceRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$TargetRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string]$LogPath
+    )
+
+    return @(
+        $SourceRoot,
+        $TargetRoot,
+        '/E',
+        '/COPY:DAT',
+        '/DCOPY:DAT',
+        '/R:2',
+        '/W:1',
+        '/XJ',
+        '/IS',
+        '/IT',
+        '/NP',
+        ("/UNILOG:{0}" -f $LogPath)
+    )
+}
+
+function Get-CopyAnimationFrame {
+    param(
+        [int]$Step,
+        [ValidateRange(8, 40)]
+        [int]$Width = 22
+    )
+
+    $faces = @(
+        '(｡･ω･｡)ﾉ',
+        'ฅ^•ﻌ•^ฅ',
+        '(づ｡◕‿‿◕｡)づ',
+        '( •̀ ω •́ )✧'
+    )
+    $cycleLength = ($Width - 1) * 2
+    $offset = $Step % $cycleLength
+    if ($offset -ge $Width) {
+        $position = $cycleLength - $offset
+    }
+    else {
+        $position = $offset
+    }
+
+    $track = @('·') * $Width
+    $track[$position] = '●'
+    return [pscustomobject]@{
+        Track = ($track -join '')
+        Face = $faces[$Step % $faces.Count]
+    }
+}
+
+function Clear-CopyAnimationLine {
+    $clearWidth = 79
+    try {
+        $clearWidth = [Math]::Max(20, $Host.UI.RawUI.WindowSize.Width - 1)
+    }
+    catch {
+        # Keep the conservative default for hosts without RawUI.
+    }
+    Write-Host ("`r{0}`r" -f (' ' * $clearWidth)) -NoNewline
+}
+
 function Invoke-ModCopy {
     param(
         [Parameter(Mandatory = $true)]
@@ -1876,25 +1945,53 @@ function Invoke-ModCopy {
     }
 
     $arguments = @(
-        $SourceRoot,
-        $TargetRoot,
-        '/E',
-        '/COPY:DAT',
-        '/DCOPY:DAT',
-        '/R:2',
-        '/W:1',
-        '/XJ',
-        '/IS',
-        '/IT',
-        '/NP',
-        '/TEE',
-        ("/UNILOG:{0}" -f $script:RoboCopyLogPath)
+        Get-ModCopyRobocopyArguments `
+            -SourceRoot $SourceRoot `
+            -TargetRoot $TargetRoot `
+            -LogPath $script:RoboCopyLogPath
     )
 
-    Write-InstallerStatus -Message '开始施展合并覆盖魔法 ✨ 目标中其他已有文件会保留。'
-    & $robocopy.Source @arguments 2>&1 |
-        ForEach-Object { Write-Host ("      {0}" -f $_) -ForegroundColor DarkGray }
-    $exitCode = $LASTEXITCODE
+    Write-InstallerStatus -Message '正在安静地合并覆盖～ 详细过程会写入日志。'
+    $copyPowerShell = $null
+    $asyncCopy = $null
+    try {
+        $copyPowerShell = [PowerShell]::Create()
+        $copyScript = @'
+param($Executable, $ArgumentList)
+& $Executable @ArgumentList 2>&1 | Out-Null
+return $LASTEXITCODE
+'@
+        $null = $copyPowerShell.AddScript($copyScript)
+        $null = $copyPowerShell.AddArgument($robocopy.Source)
+        $null = $copyPowerShell.AddArgument($arguments)
+        $asyncCopy = $copyPowerShell.BeginInvoke()
+
+        $animationStep = 0
+        while (-not $asyncCopy.IsCompleted) {
+            $frame = Get-CopyAnimationFrame -Step $animationStep
+            Write-Host (
+                "`r  🐾 [{0}] {1}  搬运中……" -f $frame.Track, $frame.Face
+            ) -ForegroundColor Magenta -NoNewline
+            Start-Sleep -Milliseconds 120
+            $animationStep++
+        }
+
+        $copyOutput = @($copyPowerShell.EndInvoke($asyncCopy))
+        if ($copyOutput.Count -eq 0) {
+            $copyError = @($copyPowerShell.Streams.Error | Select-Object -First 1)
+            if ($copyError.Count -gt 0) {
+                throw $copyError[0]
+            }
+            throw 'robocopy 没有返回退出码。'
+        }
+        $exitCode = [int]$copyOutput[$copyOutput.Count - 1]
+    }
+    finally {
+        Clear-CopyAnimationLine
+        if ($null -ne $copyPowerShell) {
+            $copyPowerShell.Dispose()
+        }
+    }
 
     ("Robocopy log: {0}" -f $script:RoboCopyLogPath) | Add-Content -LiteralPath $script:LogPath -Encoding UTF8
     ("Robocopy exit code: {0}" -f $exitCode) | Add-Content -LiteralPath $script:LogPath -Encoding UTF8

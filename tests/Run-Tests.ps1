@@ -53,8 +53,8 @@ $jsonDocuments = '{"ConfigMods":{"Caching":true,"Location":0}}'
 $jsonGameData = '{"ConfigMods":{"Caching":true,"Location":1}}'
 
 Assert-Equal `
-    -Expected ([version]'0.5.2') `
-    -Actual (ConvertTo-InstallerVersion -VersionText 'v0.5.2') `
+    -Expected ([version]'0.5.3') `
+    -Actual (ConvertTo-InstallerVersion -VersionText 'v0.5.3') `
     -Name '解析带 v 前缀的更新版本号'
 Assert-Equal `
     -Expected $true `
@@ -62,24 +62,24 @@ Assert-Equal `
     -Name '拒绝非正式三段版本号'
 
 $mockRelease = [pscustomobject]@{
-    tag_name = 'v0.5.2'
+    tag_name = 'v0.5.3'
     assets = @(
         [pscustomobject]@{
-            name = 'TTSModInstaller-v0.5.2.zip'
-            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.2.zip'
+            name = 'TTSModInstaller-v0.5.3.zip'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.3.zip'
             digest = ('sha256:' + ('a' * 64))
         },
         [pscustomobject]@{
-            name = 'TTSModInstaller-v0.5.2.zip.sha256'
-            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.2.zip.sha256'
+            name = 'TTSModInstaller-v0.5.3.zip.sha256'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.3.zip.sha256'
         }
     )
 }
 $mockZipAsset = Get-InstallerReleaseAsset `
     -Release $mockRelease `
-    -AssetName 'TTSModInstaller-v0.5.2.zip'
+    -AssetName 'TTSModInstaller-v0.5.3.zip'
 Assert-Equal `
-    -Expected 'TTSModInstaller-v0.5.2.zip' `
+    -Expected 'TTSModInstaller-v0.5.3.zip' `
     -Actual $mockZipAsset.name `
     -Name '按完整文件名选择 GitHub Release 更新资产'
 $mockSourceCodeAsset = Get-InstallerReleaseAsset `
@@ -94,8 +94,8 @@ Assert-Equal `
     -Actual (ConvertTo-InstallerProxyUrl -Url $script:UpdateApiUrl) `
     -Name '生成 gh-proxy.com API 备用地址'
 Assert-Equal `
-    -Expected 'https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.2/package.zip' `
-    -Actual (ConvertTo-InstallerProxyUrl -Url 'https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.2/package.zip') `
+    -Expected 'https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.3/package.zip' `
+    -Actual (ConvertTo-InstallerProxyUrl -Url 'https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.3/package.zip') `
     -Name '生成 gh-proxy.com Release 资产备用地址'
 Assert-Equal `
     -Expected $true `
@@ -155,6 +155,39 @@ foreach ($code in @(0, 1, 3, 7)) {
 foreach ($code in @(8, 16)) {
     Assert-Equal -Expected $false -Actual (Test-RobocopyExitCode -ExitCode $code) -Name ("Robocopy {0} 视为失败" -f $code)
 }
+
+$quietCopyArguments = @(
+    Get-ModCopyRobocopyArguments `
+        -SourceRoot 'D:\Package\Mods' `
+        -TargetRoot 'D:\TTS\Mods' `
+        -LogPath 'D:\Installer\运行数据\Logs\robocopy.log'
+)
+Assert-Equal `
+    -Expected $false `
+    -Actual ($quietCopyArguments -contains '/TEE') `
+    -Name '复制过程不再镜像到控制台'
+Assert-Equal `
+    -Expected $true `
+    -Actual ($quietCopyArguments -contains '/NP') `
+    -Name '复制过程关闭百分比输出'
+Assert-Equal `
+    -Expected $true `
+    -Actual (@($quietCopyArguments | Where-Object { $_ -like '/UNILOG:*' }).Count -eq 1) `
+    -Name '复制过程仍保留 Unicode 详细日志'
+$firstAnimationFrame = Get-CopyAnimationFrame -Step 0 -Width 12
+$returnAnimationFrame = Get-CopyAnimationFrame -Step 12 -Width 12
+Assert-Equal `
+    -Expected '●···········' `
+    -Actual $firstAnimationFrame.Track `
+    -Name '复制动画从进度轨道起点出发'
+Assert-Equal `
+    -Expected '··········●·' `
+    -Actual $returnAnimationFrame.Track `
+    -Name '复制动画抵达终点后开始折返'
+Assert-Equal `
+    -Expected $false `
+    -Actual ([string]::IsNullOrWhiteSpace($firstAnimationFrame.Face)) `
+    -Name '复制动画包含可爱颜文字'
 
 $okAppearance = Get-InstallerStatusAppearance -Level 'OK'
 $warningAppearance = Get-InstallerStatusAppearance -Level 'WARN'

@@ -1,6 +1,6 @@
 # TTS 本地图包安装器设计
 
-当前实现版本：`v0.5.2`。旧版发布包继续保留。
+当前实现版本：`v0.5.3`。旧版发布包继续保留。
 
 ## 1. 目标
 
@@ -195,10 +195,11 @@ TTS 安装目录：D:\SteamLibrary\steamapps\common\Tabletop Simulator
 实际复制建议使用系统自带 `robocopy`：
 
 ```text
-robocopy <源> <目标> /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /IS /IT
+robocopy <源> <目标> /E /COPY:DAT /DCOPY:DAT /R:2 /W:1 /XJ /IS /IT /NP /UNILOG:<日志>
 ```
 
 注意 `robocopy` 的退出码 `0` 到 `7` 都不表示致命失败，只有 `>= 8` 才作为失败处理。
+不使用 `/TEE`，避免逐文件状态刷满控制台；主进程通过异步 PowerShell 管道等待 `robocopy`，等待期间在同一行绘制往返进度轨道并轮换颜文字。动画只表达“仍在工作”，不伪造整批百分比；完整 Unicode 输出写入便携日志。
 
 `/IS /IT` 确保即使同名文件的时间戳、大小或属性相同，也以图包中的文件为准；`/XJ` 用于避免跟随目录联接。复制前还应拒绝源 Mods 根本身为 reparse point 的异常输入。
 
