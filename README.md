@@ -1,11 +1,11 @@
-# TTS 本地图包安装器 v0.6.0
+# TTS 本地图包安装器 v0.6.1
 
 在 Windows 与 macOS 上通过拖放，将 Tabletop Simulator 本地图包安全地合并覆盖到游戏当前使用的 Mods 目录。
 
 ## 下载
 
-- Windows 10/11：`TTSModInstaller-v0.6.0.zip`
-- macOS 12 或更高版本（Apple Silicon 与 Intel）：`TTSModInstaller-macOS-v0.6.0.zip`
+- Windows 10/11：`TTSModInstaller-v0.6.1.zip`
+- macOS 12 或更高版本（Apple Silicon 与 Intel）：`TTSModInstaller-macOS-v0.6.1.zip`
 
 每个发布 ZIP 都有同名 `.sha256` 校验文件。macOS 版使用 ad-hoc 签名；免费开发者账号无法提供 Developer ID 公证，首次启动请按包内的“首次打开说明”在“隐私与安全性”中选择“仍要打开”。
 
@@ -40,7 +40,7 @@
 
 ## macOS 使用方法
 
-1. 解压 `TTSModInstaller-macOS-v0.6.0.zip`，把 `TTS Mod Installer.app` 移到任意位置。
+1. 解压 `TTSModInstaller-macOS-v0.6.1.zip`，把 `TTS Mod Installer.app` 移到任意位置。
 2. 首次启动若被 Gatekeeper 拦截，在“系统设置 → 隐私与安全性”中点“仍要打开”。
 3. 将一个或多个文件夹、ZIP、TTSMOD、7Z 或 RAR 拖入窗口，也可以点“选择图包”。
 4. 检查目标路径和扫描摘要后开始安装。
@@ -52,7 +52,9 @@ macOS 版会读取 `com.berserk-games.tabletop-simulator.plist` 中全部 `Confi
 - 日志：`~/Library/Logs/TTS Mod Installer`
 - 临时解压：`~/Library/Caches/TTS Mod Installer`
 
-macOS 版只提示 GitHub 上的新版本并打开发布页，不在应用内替换自身。Game Data 不可写时会建议切回用户目录，不安装管理员提权助手。
+macOS 版每次启动都会通过 Sparkle 检查签名 appcast，发现新版后可在应用内下载、验证、替换并重新启动。GitHub 直连失败时，appcast 与更新归档各自自动切换一次 `gh-proxy.com`；代理内容仍必须通过 Ed25519 签名验证。`v0.6.0` 没有内置 Sparkle，需要手动升级一次到 `v0.6.1`，之后才能自动更新。
+
+Sparkle 只在替换位于不可写“应用程序”目录中的安装器自身时请求标准 macOS 管理员授权。Game Data 不可写时仍只建议切回用户目录，不会为 TTS Mods 写入提权。
 
 安装器会根据 Windows 原生架构自动选择内置的 x86、x64 或 ARM64 组件，并在运行前校验 `7z.exe` 和 `7z.dll` 的 SHA-256。若完整发布包中的内置组件不存在，仍会尝试使用电脑中已安装的 7-Zip 作为后备。
 
@@ -111,6 +113,8 @@ Game Data 模式：
 
 ## 自动更新
 
+### Windows
+
 安装器每次普通启动都会访问公开的 GitHub `releases/latest` 接口。GitHub 直连失败时会自动切换到 `gh-proxy.com`，Release 信息、更新 ZIP 和 SHA-256 文件都支持该备用通道。发现更高版本后：
 
 - 输入 `U`：下载对应的完整发布 ZIP，一键更新。
@@ -126,6 +130,15 @@ Game Data 模式：
 - 包内版本号与 Release 标签一致。
 
 更新助手会等待主安装器退出，备份当前核心文件，再合并覆盖新版；失败时尝试恢复旧版。更新不会删除安装器目录中的其他用户文件。内部提权子进程和 `-NonInteractive` 模式不会重复检查更新。
+
+### macOS
+
+macOS 版使用 Sparkle 2.9.5。应用每次启动进行后台检查，标题栏的“检查更新…”也可手动检查。自动下载默认关闭，发现新版后由用户确认；Sparkle 下载完成后验证签名，再负责替换、失败恢复和重新启动。
+
+- appcast 与更新归档均优先直连 GitHub；仅网络下载失败时自动切换一次 `gh-proxy.com`。
+- 签名、appcast 解析、版本、安装权限或用户取消错误不会通过代理重试。
+- appcast 和更新归档都使用项目独立的 Ed25519 密钥验证；代理、SHA-256 或 HTTPS 不能替代签名。
+- ad-hoc Apple 签名与首次 Gatekeeper 放行规则保持不变，Sparkle 签名不等同于 Developer ID 公证。
 
 ## 命令行
 
@@ -208,12 +221,14 @@ macOS（完整 Xcode）：
 ```bash
 macos/scripts/test.sh /path/to/official/7zz
 macos/scripts/package-macos.sh /path/to/7z2602-mac.tar.xz
+macos/scripts/generate-appcast.sh
 ```
 
 测试覆盖更新版本与资产解析、TTS 配置解析与冲突处理、Steam 库解析、`robocopy` 退出码、多路径拖放、压缩包预检、ZIP/TTSMOD 安全检查与解压、7Z/RAR 技术列表解析与警告语义、Mods 包装目录识别和模拟批量端到端安装。
 
 ## 版本
 
+- `v0.6.1`：macOS 版集成 Sparkle 2.9.5，新增每次启动及手动检查、Ed25519 签名 appcast、应用内下载替换、标准授权和 GitHub/`gh-proxy.com` 单次回退；Windows 版同步版本号，更新语义不变。`v0.6.0` 需手动升级一次。
 - `v0.6.0`：新增原生 Swift/AppKit macOS 应用、Universal 2 构建、官方 7-Zip 26.02 安全解压、逐文件原子合并、批量进度与日志；Windows 版同步版本号，原有安装和自更新语义不变。
 - `v0.5.4`：区分本次写入量与目标磁盘净增长；覆盖同名且同大小文件时，不再把 `0 B` 误解为没有复制；控制台配色重构为浅粉主色和低饱和辅助色。
 - `v0.5.3`：用单行循环进度条和可爱颜文字替代 `robocopy` 的逐文件刷屏，保留完整 Unicode 复制日志。
@@ -229,4 +244,4 @@ macos/scripts/package-macos.sh /path/to/7z2602-mac.tar.xz
 
 ## 第三方组件
 
-发布包包含未经修改的 7-Zip 26.02 命令行组件。Windows 使用 `7z.exe`/`7z.dll`，macOS 使用 Universal `7zz`。7-Zip 使用 GNU LGPL 等许可，详细声明见 `THIRD-PARTY-NOTICES.txt` 和发布包内的许可文件。源代码可从 [7-Zip 官网](https://www.7-zip.org/download.html) 获取。
+发布包包含未经修改的 7-Zip 26.02 命令行组件。Windows 使用 `7z.exe`/`7z.dll`，macOS 使用 Universal `7zz`。macOS 应用另嵌入 MIT 许可的 Sparkle 2.9.5。详细声明见 `THIRD-PARTY-NOTICES.txt` 和发布包内的许可文件；源代码可从 [7-Zip 官网](https://www.7-zip.org/download.html) 与 [Sparkle 项目](https://github.com/sparkle-project/Sparkle) 获取。

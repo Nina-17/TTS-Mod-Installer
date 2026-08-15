@@ -3,9 +3,9 @@ set -euo pipefail
 
 SCRIPT_DIR=${0:A:h}
 PROJECT_ROOT=${SCRIPT_DIR:h}
-VERSION='0.6.0'
-BASE_PACKAGE=${1:-"${PROJECT_ROOT}/dist/TTSModInstaller-v0.5.4.zip"}
-EXPECTED_BASE_HASH='23881499887918d7d607a1fa4a3af715eca48e9a118fad98b2de2c8d0972f1c2'
+VERSION='0.6.1'
+BASE_PACKAGE=${1:-"${PROJECT_ROOT}/dist/TTSModInstaller-v0.6.0.zip"}
+EXPECTED_BASE_HASH='be40d5c53c57e0795c0752ecc20b0c096e357143fba7879a0fea0f62a10964bd'
 
 if [[ ! -f "${BASE_PACKAGE}" ]]; then
   print -u2 "未找到含官方 Windows 7-Zip 组件的基准包：${BASE_PACKAGE}"

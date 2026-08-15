@@ -4,9 +4,9 @@ import UniformTypeIdentifiers
 
 final class MainViewController: NSViewController, NSTableViewDataSource, NSTableViewDelegate {
     private let pathResolver = TTSPathResolver()
+    private let updateCoordinator: UpdateCoordinator
     private var destinationResolution: DestinationResolution!
     private var packageURLs: [URL] = []
-    private var latestReleaseURL: URL?
     private var lastLogURL: URL?
     private var cancellationToken: CancellationToken?
 
@@ -22,6 +22,15 @@ final class MainViewController: NSViewController, NSTableViewDataSource, NSTable
     private let openModsButton = NSButton(title: "打开 Mods", target: nil, action: nil)
     private let updateButton = NSButton(title: "发现新版本", target: nil, action: nil)
 
+    init(updateCoordinator: UpdateCoordinator) {
+        self.updateCoordinator = updateCoordinator
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
     override func loadView() {
         view = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 680))
         configureUI()
@@ -30,9 +39,9 @@ final class MainViewController: NSViewController, NSTableViewDataSource, NSTable
     override func viewDidLoad() {
         super.viewDidLoad()
         dropZone.onURLs = { [weak self] urls in self?.addPackageURLs(urls) }
+        updateCoordinator.onStateChange = { [weak self] in self?.updateControls() }
         refreshDestination()
         updateControls()
-        checkForUpdates()
     }
 
     func addPackageURLs(_ urls: [URL]) {
@@ -66,9 +75,9 @@ final class MainViewController: NSViewController, NSTableViewDataSource, NSTable
         subtitle.textColor = .secondaryLabelColor
 
         updateButton.bezelStyle = .rounded
-        updateButton.isHidden = true
+        updateButton.title = "检查更新…"
         updateButton.target = self
-        updateButton.action = #selector(openReleasePage)
+        updateButton.action = #selector(checkForUpdates)
         let headerSpacer = NSView()
         headerSpacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
         let header = NSStackView(views: [NSStackView(views: [title, subtitle]), headerSpacer, updateButton])
@@ -240,6 +249,8 @@ final class MainViewController: NSViewController, NSTableViewDataSource, NSTable
         targetPopup.isEnabled = !busy
         openModsButton.isEnabled = selectedTarget() != nil
         cancelButton.isHidden = !busy
+        updateButton.title = updateCoordinator.buttonTitle
+        updateButton.isEnabled = !busy && updateCoordinator.canCheckForUpdates
     }
 
     @objc private func startInstall() {
@@ -377,20 +388,7 @@ final class MainViewController: NSViewController, NSTableViewDataSource, NSTable
         else { showAlert(title: "Mods 目录尚不存在", message: target.path) }
     }
 
-    private func checkForUpdates() {
-        UpdateChecker().check { [weak self] result in
-            guard case .success(let release?) = result else { return }
-            DispatchQueue.main.async {
-                self?.latestReleaseURL = release.pageURL
-                self?.updateButton.title = "发现 \(release.tagName)"
-                self?.updateButton.isHidden = false
-            }
-        }
-    }
-
-    @objc private func openReleasePage() {
-        if let latestReleaseURL { NSWorkspace.shared.open(latestReleaseURL) }
-    }
+    @objc private func checkForUpdates() { updateCoordinator.checkManually() }
 
     private func showAlert(title: String, message: String) {
         let alert = NSAlert()

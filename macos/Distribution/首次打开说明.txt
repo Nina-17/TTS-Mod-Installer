@@ -12,5 +12,7 @@
 
 系统会把这个版本保存为例外，之后可以正常双击打开。
 
+Sparkle 的 Ed25519 更新签名只验证后续更新来自本项目，不能替代 Apple Developer ID 公证或本次首次放行。
+
 请只从项目官方 GitHub Release 下载，并核对同名 .sha256 文件。
 项目地址：https://github.com/Nina-17/TTS-Mod-Installer

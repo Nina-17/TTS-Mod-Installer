@@ -1,4 +1,4 @@
-TTS 本地图包安装器 macOS v0.6.0
+TTS 本地图包安装器 macOS v0.6.1
 ================================
 
 1. 解压发布 ZIP，把“TTS Mod Installer.app”拖到“应用程序”或保留在解压目录。
@@ -17,4 +17,8 @@ TTS 本地图包安装器 macOS v0.6.0
 日志：~/Library/Logs/TTS Mod Installer
 临时解压：~/Library/Caches/TTS Mod Installer
 
-本版本未经过 Apple 公证，不包含管理员提权或应用内自动更新。
+应用每次启动都会检查签名更新，也可以点击“检查更新…”。GitHub 直连失败时会自动切换一次 gh-proxy.com；所有更新仍必须通过 Ed25519 签名验证。
+
+v0.6.0 不包含自动更新组件，需要手动安装一次 v0.6.1。此后 Sparkle 可以在应用内完成更新；若应用所在目录不可写，可能出现仅用于替换本应用的标准 macOS 管理员授权提示。
+
+本版本未经过 Apple Developer ID 公证，首次打开仍需按说明在“隐私与安全性”中放行。TTS Mods 目标不可写时不会请求管理员提权。

@@ -1,0 +1,125 @@
+name: Release installers
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-tests:
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run Windows tests
+        shell: powershell
+        run: powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
+
+  release:
+    needs: windows-tests
+    runs-on: macos-15
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag and source versions
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' macos/Resources/Info.plist)
+          [[ "v${version}" == "${GITHUB_REF_NAME}" ]]
+          /usr/bin/grep -Fq "public static let version = \"${version}\"" macos/Sources/TTSModInstallerCore/Models.swift
+          /usr/bin/grep -Fq "InstallerVersion = '${version}'" TTSModInstaller.ps1
+          /usr/bin/grep -Fq "VERSION='${version}'" macos/scripts/package-macos.sh
+          /usr/bin/grep -Fq "VERSION='${version}'" scripts/package-windows.sh
+
+      - name: Download verified 7-Zip 26.02
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          /usr/bin/curl --fail --location --silent --show-error \
+            --output /tmp/7z2602-mac.tar.xz \
+            https://www.7-zip.org/a/7z2602-mac.tar.xz
+          actual=$(/usr/bin/shasum -a 256 /tmp/7z2602-mac.tar.xz | /usr/bin/awk '{print $1}')
+          [[ "${actual}" == "1cf6760579502f87e591ff5c73a005ec50b3e4d6f507e8b038382d563c3175b9" ]]
+
+      - name: Build macOS and Windows release assets
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          ./macos/scripts/package-macos.sh /tmp/7z2602-mac.tar.xz
+          ./scripts/package-windows.sh
+
+      - name: Download verified Sparkle 2.9.5 publishing tools
+        shell: zsh {0}
+        run: |
+          set -euo pipefail
+          /usr/bin/curl --fail --location --silent --show-error \
+            --output /tmp/Sparkle-2.9.5.tar.xz \
+            https://github.com/sparkle-project/Sparkle/releases/download/2.9.5/Sparkle-2.9.5.tar.xz
+          actual=$(/usr/bin/shasum -a 256 /tmp/Sparkle-2.9.5.tar.xz | /usr/bin/awk '{print $1}')
+          [[ "${actual}" == "015336b601493e05c237964954bff6191370003d94edefe663724c88840d73cc" ]]
+          /bin/mkdir -p /tmp/sparkle-tools
+          /usr/bin/tar -xJf /tmp/Sparkle-2.9.5.tar.xz -C /tmp/sparkle-tools --strip-components=1
+
+      - name: Generate signed Sparkle appcast
+        shell: zsh {0}
+        env:
+          SPARKLE_ED25519_PRIVATE_KEY: ${{ secrets.SPARKLE_ED25519_PRIVATE_KEY }}
+          SPARKLE_PUBLISH_TOOLS: /tmp/sparkle-tools/bin
+        run: |
+          set -euo pipefail
+          [[ -n "${SPARKLE_ED25519_PRIVATE_KEY}" ]]
+          previous=/tmp/previous-appcast.xml
+          if /usr/bin/curl --fail --location --silent --show-error \
+            --output "${previous}" \
+            https://raw.githubusercontent.com/Nina-17/TTS-Mod-Installer/gh-pages/appcast.xml; then
+            ./macos/scripts/generate-appcast.sh "" "${previous}"
+          else
+            ./macos/scripts/generate-appcast.sh
+          fi
+
+      - name: Publish GitHub Release
+        shell: zsh {0}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' macos/Resources/Info.plist)
+          gh release create "${GITHUB_REF_NAME}" \
+            "dist/TTSModInstaller-v${version}.zip" \
+            "dist/TTSModInstaller-v${version}.zip.sha256" \
+            "dist/TTSModInstaller-macOS-v${version}.zip" \
+            "dist/TTSModInstaller-macOS-v${version}.zip.sha256" \
+            "dist/TTSModInstaller-macOS-v${version}.sparkle.zip" \
+            "dist/TTSModInstaller-macOS-v${version}.sparkle.zip.sha256" \
+            --verify-tag \
+            --generate-notes \
+            --title "TTS Mod Installer ${version}"
+
+      - name: Publish signed appcast to GitHub Pages
+        shell: zsh {0}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pages_dir=$(/usr/bin/mktemp -d /tmp/tts-appcast.XXXXXX)
+          git -C "${pages_dir}" init --initial-branch=gh-pages
+          git -C "${pages_dir}" config user.name "github-actions[bot]"
+          git -C "${pages_dir}" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "${pages_dir}" remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if git -C "${pages_dir}" fetch origin gh-pages; then
+            git -C "${pages_dir}" checkout -B gh-pages origin/gh-pages
+          fi
+          /bin/cp dist/appcast.xml "${pages_dir}/appcast.xml"
+          git -C "${pages_dir}" add appcast.xml
+          if ! git -C "${pages_dir}" diff --cached --quiet; then
+            git -C "${pages_dir}" commit -m "Publish appcast for ${GITHUB_REF_NAME}"
+            git -C "${pages_dir}" push origin gh-pages
+          fi

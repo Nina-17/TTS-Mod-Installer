@@ -4,10 +4,14 @@ import TTSModInstallerCore
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowController: NSWindowController?
     private var mainViewController: MainViewController?
+    private var updateCoordinator: UpdateCoordinator?
 
+    @MainActor
     func applicationDidFinishLaunching(_ notification: Notification) {
         InstallerLogger.cleanStaleData()
-        let controller = MainViewController()
+        let updateCoordinator = UpdateCoordinator()
+        self.updateCoordinator = updateCoordinator
+        let controller = MainViewController(updateCoordinator: updateCoordinator)
         let window = NSWindow(contentViewController: controller)
         window.title = "TTS 本地图包安装器"
         window.setContentSize(NSSize(width: 760, height: 680))
@@ -18,11 +22,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         self.windowController = windowController
         windowController.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+        updateCoordinator.start()
     }
 
+    @MainActor
     func application(_ application: NSApplication, open urls: [URL]) {
         mainViewController?.addPackageURLs(urls)
     }
 
+    @MainActor
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
 }

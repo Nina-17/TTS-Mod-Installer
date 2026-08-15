@@ -1,6 +1,6 @@
 # TTS 本地图包安装器设计
 
-当前实现版本：`v0.6.0`。旧版发布包继续保留。
+当前实现版本：`v0.6.1`。旧版发布包继续保留。
 
 ## 1. 目标
 
@@ -359,15 +359,17 @@ Write-InstallerLog
 - 多图包队列和纯命令行静默模式。
 - Windows 沙盒或 CI 中的 Pester 自动测试。
 
-## 11. macOS v0.6.0 实现
+## 11. macOS v0.6.1 实现
 
 - 独立 Swift Package/AppKit 应用，Bundle ID 为 `io.github.nina-17.tts-mod-installer`，最低 macOS 12；不改写 Windows PowerShell 安装器。
 - 读取 `~/Library/Preferences/com.berserk-games.tabletop-simulator.plist` 中全部 `ConfigGame`/`ConfigGame_h*`。`ConfigMods.Location=0` 指向 `~/Library/Tabletop Simulator/Mods`，`1` 指向实际 Steam 库中 `Tabletop Simulator.app/Contents/Mods`；缺失或冲突必须人工选择。
 - 通过默认 Steam 根目录、`libraryfolders.vdf` 与 AppID `286160` manifest 查找自定义库。TTS 运行时阻止写入，不自动退出游戏。
 - 文件夹及 ZIP/TTSMOD/7Z/RAR 统一进入同一套预检、Mods 根识别和合并复制流程。归档格式由官方 Universal `7zz` 处理，打包前校验官方哈希，运行时校验固定的 ad-hoc 签名后哈希。
 - 复制采用同目录临时文件后原子替换；覆盖同名文件、保留无关文件、不镜像删除。来源或目标符号链接、路径穿越、大小写/Unicode 冲突、超限包和多 Mods 候选均停止。
-- 日志位于 `~/Library/Logs/TTS Mod Installer`，缓存位于 `~/Library/Caches/TTS Mod Installer`。更新检查只显示新版并打开 GitHub 发布页。
-- 发布脚本构建 arm64/x86_64 Universal 主程序，嵌入并单独签名 `7zz`，随后 ad-hoc 签名 `.app`，规范化 ZIP 元数据并生成 SHA-256。正式包不包含清除 quarantine 的脚本。
+- 日志位于 `~/Library/Logs/TTS Mod Installer`，缓存位于 `~/Library/Caches/TTS Mod Installer`。每次启动由 Sparkle 检查签名 appcast；网络下载错误从 GitHub 直连切换一次 `gh-proxy.com`，签名、解析、权限和用户取消错误不回退。
+- Sparkle appcast 与更新归档均使用项目独立 Ed25519 密钥，启用解压前验证和签名 feed；免费 Apple 账号继续使用 ad-hoc 应用签名，不能替代 Developer ID、公证和首次 Gatekeeper 放行。
+- 发布脚本构建 arm64/x86_64 Universal 主程序，嵌入并签名 Universal `Sparkle.framework` 与 `7zz`，随后 ad-hoc 签名 `.app`；同时生成用户 ZIP、以 `.app` 为根的 Sparkle ZIP、SHA-256 和签名 appcast。正式包不包含清除 quarantine 的脚本。
+- `v0.6.0` 没有 Sparkle，只能手动升级到 `v0.6.1`；后续正式版本才可沿 appcast 自动更新。位于不可写 `/Applications` 时允许 Sparkle 为替换本应用请求标准管理员授权，Mods 写入仍不提权。
 
 macOS 自动测试不得写入真实 TTS Mods。当前 Mac 的用户目录与 Game Data 路径只做只读解析验收；真实图包与 TTS 运行拦截保留为发布前人工 GUI 验收。
 
