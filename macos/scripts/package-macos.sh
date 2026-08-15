@@ -21,6 +21,7 @@ if [[ "${ARCHIVE_HASH}" != "${EXPECTED_ARCHIVE_HASH}" ]]; then
   exit 3
 fi
 
+/bin/mkdir -p "${MACOS_ROOT}/.build"
 WORK_ROOT=$(/usr/bin/mktemp -d "${MACOS_ROOT}/.build/package.XXXXXX")
 trap '/bin/rm -rf "${WORK_ROOT}"' EXIT
 SEVENZIP_ROOT="${WORK_ROOT}/sevenzip"
