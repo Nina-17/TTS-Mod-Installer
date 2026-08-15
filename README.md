@@ -1,8 +1,15 @@
-# TTS 本地图包安装器 v0.5.4
+# TTS 本地图包安装器 v0.6.0
 
-Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖到游戏当前使用的 Mods 目录。
+在 Windows 与 macOS 上通过拖放，将 Tabletop Simulator 本地图包安全地合并覆盖到游戏当前使用的 Mods 目录。
 
-## 使用方法
+## 下载
+
+- Windows 10/11：`TTSModInstaller-v0.6.0.zip`
+- macOS 12 或更高版本（Apple Silicon 与 Intel）：`TTSModInstaller-macOS-v0.6.0.zip`
+
+每个发布 ZIP 都有同名 `.sha256` 校验文件。macOS 版使用 ad-hoc 签名；免费开发者账号无法提供 Developer ID 公证，首次启动请按包内的“首次打开说明”在“隐私与安全性”中选择“仍要打开”。
+
+## Windows 使用方法
 
 下载发布包后请先选择“全部解压”，不要直接在 ZIP 预览窗口中运行启动器。
 
@@ -30,6 +37,22 @@ Windows 上通过拖放，将 Tabletop Simulator 本地图包自动合并覆盖�
 - 支持 Steam 默认库和其他磁盘上的附加 Steam 库。
 - 解压前检查路径安全、文件数量、声明大小、异常压缩比和临时磁盘空间。
 - 每次普通启动检查 GitHub 正式版更新，支持下载、校验、备份、替换和重新启动。
+
+## macOS 使用方法
+
+1. 解压 `TTSModInstaller-macOS-v0.6.0.zip`，把 `TTS Mod Installer.app` 移到任意位置。
+2. 首次启动若被 Gatekeeper 拦截，在“系统设置 → 隐私与安全性”中点“仍要打开”。
+3. 将一个或多个文件夹、ZIP、TTSMOD、7Z 或 RAR 拖入窗口，也可以点“选择图包”。
+4. 检查目标路径和扫描摘要后开始安装。
+
+macOS 版会读取 `com.berserk-games.tabletop-simulator.plist` 中全部 `ConfigGame`/`ConfigGame_h*` 配置。配置缺失或互相冲突时必须由用户选择本批次目标，不会修改 TTS 设置，也不会根据旧目录是否存在静默猜测。
+
+- 用户目录模式：`~/Library/Tabletop Simulator/Mods`
+- Game Data 模式：`Tabletop Simulator.app/Contents/Mods`
+- 日志：`~/Library/Logs/TTS Mod Installer`
+- 临时解压：`~/Library/Caches/TTS Mod Installer`
+
+macOS 版只提示 GitHub 上的新版本并打开发布页，不在应用内替换自身。Game Data 不可写时会建议切回用户目录，不安装管理员提权助手。
 
 安装器会根据 Windows 原生架构自动选择内置的 x86、x64 或 ARM64 组件，并在运行前校验 `7z.exe` 和 `7z.dll` 的 SHA-256。若完整发布包中的内置组件不存在，仍会尝试使用电脑中已安装的 7-Zip 作为后备。
 
@@ -174,16 +197,24 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\TTSModInstaller.ps1 "D
 
 ## 开发测试
 
-在 Windows PowerShell 5.1 中运行：
+Windows PowerShell 5.1：
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
+```
+
+macOS（完整 Xcode）：
+
+```bash
+macos/scripts/test.sh /path/to/official/7zz
+macos/scripts/package-macos.sh /path/to/7z2602-mac.tar.xz
 ```
 
 测试覆盖更新版本与资产解析、TTS 配置解析与冲突处理、Steam 库解析、`robocopy` 退出码、多路径拖放、压缩包预检、ZIP/TTSMOD 安全检查与解压、7Z/RAR 技术列表解析与警告语义、Mods 包装目录识别和模拟批量端到端安装。
 
 ## 版本
 
+- `v0.6.0`：新增原生 Swift/AppKit macOS 应用、Universal 2 构建、官方 7-Zip 26.02 安全解压、逐文件原子合并、批量进度与日志；Windows 版同步版本号，原有安装和自更新语义不变。
 - `v0.5.4`：区分本次写入量与目标磁盘净增长；覆盖同名且同大小文件时，不再把 `0 B` 误解为没有复制；控制台配色重构为浅粉主色和低饱和辅助色。
 - `v0.5.3`：用单行循环进度条和可爱颜文字替代 `robocopy` 的逐文件刷屏，保留完整 Unicode 复制日志。
 - `v0.5.2`：启动器改名为 `点我启动.cmd`；日志、临时解压、UAC 交接、更新下载和备份全部改为保存在安装器文件夹内的 `运行数据`。
@@ -198,4 +229,4 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tests\Run-Tests.ps1
 
 ## 第三方组件
 
-发布包包含未经修改的 7-Zip 26.02 命令行组件。7-Zip 使用 GNU LGPL 等许可，详细声明见 `THIRD-PARTY-NOTICES.txt` 和发布包内的 `tools\7zip\License.txt`。源代码可从 [7-Zip 官网](https://www.7-zip.org/download.html) 获取。
+发布包包含未经修改的 7-Zip 26.02 命令行组件。Windows 使用 `7z.exe`/`7z.dll`，macOS 使用 Universal `7zz`。7-Zip 使用 GNU LGPL 等许可，详细声明见 `THIRD-PARTY-NOTICES.txt` 和发布包内的许可文件。源代码可从 [7-Zip 官网](https://www.7-zip.org/download.html) 获取。

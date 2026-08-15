@@ -1,13 +1,13 @@
 # TTS 本地图包安装器设计
 
-当前实现版本：`v0.5.4`。旧版发布包继续保留。
+当前实现版本：`v0.6.0`。旧版发布包继续保留。
 
 ## 1. 目标
 
-做一个面向 Windows 普通用户的便携脚本，完成：
+Windows 版保留面向普通用户的便携脚本；macOS 版新增原生 AppKit 应用。两端共同完成：
 
 1. 自动识别 Tabletop Simulator（TTS）当前使用的 Mods 目录。
-2. 接受拖入命令行窗口的文件夹或压缩包。
+2. 接受拖入平台入口的文件夹或压缩包。
 3. 自动识别图包内真正的 `Mods` 根目录。
 4. 将内容合并覆盖到目标 Mods 目录，不删除已有的其他 Mod。
 5. 在路径不明确、包结构异常或文件复制失败时停止并给出可理解的提示。
@@ -17,11 +17,11 @@
 - 不修改 TTS 的“Mod Save Location”游戏设置。
 - 不删除目标中图包未包含的文件。
 - 不在后台自动关闭 TTS。
-- 第一版不做 GUI。
+- Windows 版不重写为 GUI；macOS 版只提供 GUI。
 
 ## 2. 推荐实现
 
-使用 Windows PowerShell 5.1 编写，无需用户预装 Python、Node.js 或 .NET SDK。
+Windows 使用 PowerShell 5.1，无需用户预装 Python、Node.js 或 .NET SDK。macOS 使用 Swift Package 与 AppKit，最低 macOS 12，发布为 arm64/x86_64 Universal 2 应用。
 
 交付一个面向用户的入口和一个脚本主体：
 
@@ -358,6 +358,18 @@ Write-InstallerLog
 - 冲突备份参数。
 - 多图包队列和纯命令行静默模式。
 - Windows 沙盒或 CI 中的 Pester 自动测试。
+
+## 11. macOS v0.6.0 实现
+
+- 独立 Swift Package/AppKit 应用，Bundle ID 为 `io.github.nina-17.tts-mod-installer`，最低 macOS 12；不改写 Windows PowerShell 安装器。
+- 读取 `~/Library/Preferences/com.berserk-games.tabletop-simulator.plist` 中全部 `ConfigGame`/`ConfigGame_h*`。`ConfigMods.Location=0` 指向 `~/Library/Tabletop Simulator/Mods`，`1` 指向实际 Steam 库中 `Tabletop Simulator.app/Contents/Mods`；缺失或冲突必须人工选择。
+- 通过默认 Steam 根目录、`libraryfolders.vdf` 与 AppID `286160` manifest 查找自定义库。TTS 运行时阻止写入，不自动退出游戏。
+- 文件夹及 ZIP/TTSMOD/7Z/RAR 统一进入同一套预检、Mods 根识别和合并复制流程。归档格式由官方 Universal `7zz` 处理，打包前校验官方哈希，运行时校验固定的 ad-hoc 签名后哈希。
+- 复制采用同目录临时文件后原子替换；覆盖同名文件、保留无关文件、不镜像删除。来源或目标符号链接、路径穿越、大小写/Unicode 冲突、超限包和多 Mods 候选均停止。
+- 日志位于 `~/Library/Logs/TTS Mod Installer`，缓存位于 `~/Library/Caches/TTS Mod Installer`。更新检查只显示新版并打开 GitHub 发布页。
+- 发布脚本构建 arm64/x86_64 Universal 主程序，嵌入并单独签名 `7zz`，随后 ad-hoc 签名 `.app`，规范化 ZIP 元数据并生成 SHA-256。正式包不包含清除 quarantine 的脚本。
+
+macOS 自动测试不得写入真实 TTS Mods。当前 Mac 的用户目录与 Game Data 路径只做只读解析验收；真实图包与 TTS 运行拦截保留为发布前人工 GUI 验收。
 
 ## 参考
 

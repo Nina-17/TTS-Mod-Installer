@@ -3,3 +3,5 @@ Thumbs.db
 Desktop.ini
 *.log
 运行数据/
+macos/.build/
+macos/.swiftpm/

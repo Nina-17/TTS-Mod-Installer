@@ -8,10 +8,12 @@ Copyright (C) 1999-2026 Igor Pavlov
 https://www.7-zip.org/
 
 The bundled 7z.exe and 7z.dll files are provided for x86, x64, and ARM64
-Windows systems. 7-Zip is licensed under the GNU Lesser General Public
+Windows systems. The bundled 7zz executable is provided as an arm64/x86_64
+Universal binary for macOS. 7-Zip is licensed under the GNU Lesser General Public
 License (LGPL), with additional license information described by 7-Zip.
 
-The original 7-Zip License.txt is included under tools\7zip\License.txt.
+The original 7-Zip License.txt is included beside the platform-specific 7-Zip
+command-line component.
 7-Zip source code is available from:
 
 https://www.7-zip.org/download.html
