@@ -1,6 +1,6 @@
 # Bundled 7-Zip manifest
 
-Release builds bundle the unmodified `7z.exe` and `7z.dll` files from the official 7-Zip 26.02 Windows installers.
+Release builds bundle the unmodified `7z.exe` and `7z.dll` files from the official 7-Zip 26.02 Windows installers, plus the official Universal `7zz` from the macOS archive.
 
 Official source:
 
@@ -23,6 +23,8 @@ tools/7zip/
     └── 7z.dll
 ```
 
+The macOS app stores `7zz` and its license under `Contents/Resources/tools/7zip/`.
+
 SHA-256:
 
 | File | SHA-256 |
@@ -33,5 +35,9 @@ SHA-256:
 | `x64/7z.dll` | `69fd4df057985c40e510e2fac182881c7f85e90aa13ec703f763a8fdb2ce61f8` |
 | `arm64/7z.exe` | `46009c25732880c9d49032ec20da46dfdc669fb60257f50308a0026b4fac3aef` |
 | `arm64/7z.dll` | `7346eaea5f333b1d65b6b4eedf6797c416bbc91c75e46159df38aa28e153f7c5` |
+| macOS archive `7z2602-mac.tar.xz` | `1cf6760579502f87e591ff5c73a005ec50b3e4d6f507e8b038382d563c3175b9` |
+| macOS Universal `7zz` | `9c56cf3379a0d8544e9244958b96fdc7c17f9ce70f5a160eb2b41f5f3df96d8c` |
+| macOS ad-hoc signed `7zz` | `29034e8f067c2f939f4bcac26fd552da2c72ffa2c7e572e4b41f3131e5a86208` |
+| macOS `License.txt` | `1790374e5352329cedb46ee3808930a88e9ca2f08b82b10fcf5cf605d2c301b1` |
 
 The binaries are intentionally kept in release artifacts rather than duplicated in the source checkout.

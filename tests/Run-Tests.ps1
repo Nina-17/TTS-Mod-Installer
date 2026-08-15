@@ -53,8 +53,8 @@ $jsonDocuments = '{"ConfigMods":{"Caching":true,"Location":0}}'
 $jsonGameData = '{"ConfigMods":{"Caching":true,"Location":1}}'
 
 Assert-Equal `
-    -Expected ([version]'0.5.4') `
-    -Actual (ConvertTo-InstallerVersion -VersionText 'v0.5.4') `
+    -Expected ([version]'0.6.0') `
+    -Actual (ConvertTo-InstallerVersion -VersionText 'v0.6.0') `
     -Name '解析带 v 前缀的更新版本号'
 Assert-Equal `
     -Expected $true `
@@ -62,24 +62,24 @@ Assert-Equal `
     -Name '拒绝非正式三段版本号'
 
 $mockRelease = [pscustomobject]@{
-    tag_name = 'v0.5.4'
+    tag_name = 'v0.6.0'
     assets = @(
         [pscustomobject]@{
-            name = 'TTSModInstaller-v0.5.4.zip'
-            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.4.zip'
+            name = 'TTSModInstaller-v0.6.0.zip'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.6.0.zip'
             digest = ('sha256:' + ('a' * 64))
         },
         [pscustomobject]@{
-            name = 'TTSModInstaller-v0.5.4.zip.sha256'
-            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.5.4.zip.sha256'
+            name = 'TTSModInstaller-v0.6.0.zip.sha256'
+            browser_download_url = 'https://example.invalid/TTSModInstaller-v0.6.0.zip.sha256'
         }
     )
 }
 $mockZipAsset = Get-InstallerReleaseAsset `
     -Release $mockRelease `
-    -AssetName 'TTSModInstaller-v0.5.4.zip'
+    -AssetName 'TTSModInstaller-v0.6.0.zip'
 Assert-Equal `
-    -Expected 'TTSModInstaller-v0.5.4.zip' `
+    -Expected 'TTSModInstaller-v0.6.0.zip' `
     -Actual $mockZipAsset.name `
     -Name '按完整文件名选择 GitHub Release 更新资产'
 $mockSourceCodeAsset = Get-InstallerReleaseAsset `
@@ -94,8 +94,8 @@ Assert-Equal `
     -Actual (ConvertTo-InstallerProxyUrl -Url $script:UpdateApiUrl) `
     -Name '生成 gh-proxy.com API 备用地址'
 Assert-Equal `
-    -Expected 'https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.4/package.zip' `
-    -Actual (ConvertTo-InstallerProxyUrl -Url 'https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.5.4/package.zip') `
+    -Expected 'https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.6.0/package.zip' `
+    -Actual (ConvertTo-InstallerProxyUrl -Url 'https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.6.0/package.zip') `
     -Name '生成 gh-proxy.com Release 资产备用地址'
 Assert-Equal `
     -Expected $true `

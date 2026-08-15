@@ -1,0 +1,20 @@
+TTS 本地图包安装器 macOS v0.6.0
+================================
+
+1. 解压发布 ZIP，把“TTS Mod Installer.app”拖到“应用程序”或保留在解压目录。
+2. 首次打开若被 macOS 拦截，请阅读同目录的“首次打开说明.txt”。
+3. 把一个或多个文件夹、ZIP、TTSMOD、7Z 或 RAR 图包拖进窗口。
+4. 核对安装目标，点击“开始安装”。
+
+目标位置：
+
+- 用户目录：~/Library/Tabletop Simulator/Mods
+- Game Data：Tabletop Simulator.app/Contents/Mods
+
+安装器会读取 TTS 当前配置决定目标；配置缺失或冲突时会要求手动选择。
+同名文件会覆盖，目标内其他文件会保留，不会执行镜像删除。
+
+日志：~/Library/Logs/TTS Mod Installer
+临时解压：~/Library/Caches/TTS Mod Installer
+
+本版本未经过 Apple 公证，不包含管理员提权或应用内自动更新。
