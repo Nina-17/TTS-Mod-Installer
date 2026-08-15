@@ -20,3 +20,12 @@ https://www.7-zip.org/download.html
 
 The TTS Mod Installer invokes these components as separate command-line
 programs and does not modify them.
+
+Sparkle 2.9.5
+Copyright (c) 2006-2026 Andy Matuschak and the Sparkle Project
+https://github.com/sparkle-project/Sparkle
+
+The macOS application embeds the unmodified Universal Sparkle framework for
+signed update checks, downloads, installation, rollback, and relaunch. Sparkle
+is distributed under the MIT License. The complete Sparkle LICENSE file is
+included in the macOS distribution ZIP.

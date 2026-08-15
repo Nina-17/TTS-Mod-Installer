@@ -268,6 +268,42 @@ check(SemanticVersion("v0.6.0") == SemanticVersion("0.6.0"), "解析三段正式
 check(SemanticVersion("0.6.1")! > SemanticVersion("0.6.0")!, "比较更新版本")
 check(SemanticVersion("v0.6-beta") == nil, "拒绝非正式版本")
 
+let releaseURL = URL(string: "https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.6.1/TTSModInstaller-macOS-v0.6.1.sparkle.zip")!
+check(UpdateProxyURL.isAllowed(releaseURL), "允许 GitHub Release HTTPS 更新地址")
+check(
+    UpdateProxyURL.proxyURL(for: releaseURL)?.absoluteString ==
+        "https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.6.1/TTSModInstaller-macOS-v0.6.1.sparkle.zip",
+    "生成 gh-proxy.com 更新归档备用地址"
+)
+let encodedReleaseURL = URL(string: "https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.6.1/TTS%20Mod.zip?source=app%20update")!
+check(
+    UpdateProxyURL.proxyURL(for: encodedReleaseURL)?.absoluteString ==
+        "https://gh-proxy.com/https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.6.1/TTS%20Mod.zip?source=app%20update",
+    "代理地址保留原始 URL 编码"
+)
+check(UpdateProxyURL.isAllowed(URL(string: "https://nina-17.github.io/TTS-Mod-Installer/appcast.xml")!), "允许官方 GitHub Pages appcast")
+check(!UpdateProxyURL.isAllowed(URL(string: "http://github.com/Nina-17/file.zip")!), "代理拒绝非 HTTPS 地址")
+check(!UpdateProxyURL.isAllowed(URL(string: "https://example.com/file.zip")!), "代理拒绝非白名单域名")
+check(!UpdateProxyURL.isAllowed(URL(string: "https://github.com/file.zip#fragment")!), "代理拒绝带片段的地址")
+
+var feedFallback = UpdateFallbackState()
+check(feedFallback.channel == .direct, "更新检查默认使用 GitHub 直连")
+check(feedFallback.requestProxyRetry(forDownloadError: true), "直连下载错误触发代理重试")
+check(feedFallback.channel == .proxy && feedFallback.retryUsed, "代理重试只切换一次通道")
+check(!feedFallback.requestProxyRetry(forDownloadError: true), "代理失败不循环重试")
+
+var archiveFallback = UpdateFallbackState()
+archiveFallback.recordDownloadStarted()
+check(archiveFallback.requestProxyRetry(forDownloadError: true), "更新归档直连失败切换代理")
+check(archiveFallback.consumeContinueInstall(), "代理重试延续已确认安装")
+check(!archiveFallback.consumeContinueInstall(), "已确认安装状态只消费一次")
+
+var validationFailure = UpdateFallbackState()
+check(!validationFailure.requestProxyRetry(forDownloadError: false), "签名或解析错误不切换代理")
+check(validationFailure.channel == .direct && !validationFailure.retryUsed, "非网络错误保持直连状态")
+validationFailure.beginFreshCheck()
+check(validationFailure == UpdateFallbackState(), "新检查重置代理重试状态")
+
 let liveResolver = TTSPathResolver()
 if FileManager.default.fileExists(atPath: liveResolver.preferencesURL.path) {
     let resolution = liveResolver.resolve()

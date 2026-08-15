@@ -1,15 +1,5 @@
 import Foundation
 
-public struct ReleaseInformation: Decodable {
-    public let tagName: String
-    public let pageURL: URL
-
-    enum CodingKeys: String, CodingKey {
-        case tagName = "tag_name"
-        case pageURL = "html_url"
-    }
-}
-
 public enum SemanticVersion: Comparable, Equatable {
     case value(Int, Int, Int)
 
@@ -29,54 +19,59 @@ public enum SemanticVersion: Comparable, Equatable {
     }
 }
 
-public final class UpdateChecker {
-    private let session: URLSession
-    private let directURL = URL(string: "https://api.github.com/repos/Nina-17/TTS-Mod-Installer/releases/latest")!
+public enum UpdateChannel: Equatable {
+    case direct
+    case proxy
+}
 
-    public init(session: URLSession = .shared) {
-        self.session = session
+public enum UpdateProxyURL {
+    public static let prefix = "https://gh-proxy.com/"
+
+    public static func isAllowed(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              url.user == nil,
+              url.password == nil,
+              url.fragment == nil,
+              let host = url.host?.lowercased() else { return false }
+        return host == "github.com" ||
+            host.hasSuffix(".github.com") ||
+            host == "nina-17.github.io"
     }
 
-    public func check(completion: @escaping (Result<ReleaseInformation?, Error>) -> Void) {
-        request(directURL) { [weak self] directResult in
-            switch directResult {
-            case .success(let release): self?.finish(release, completion: completion)
-            case .failure:
-                guard let self,
-                      let proxyURL = URL(string: "https://gh-proxy.com/\(self.directURL.absoluteString)") else {
-                    completion(directResult.map { Optional($0) })
-                    return
-                }
-                self.request(proxyURL) { proxyResult in
-                    switch proxyResult {
-                    case .success(let release): self.finish(release, completion: completion)
-                    case .failure(let error): completion(.failure(error))
-                    }
-                }
-            }
-        }
+    public static func proxyURL(for url: URL) -> URL? {
+        guard isAllowed(url) else { return nil }
+        return URL(string: prefix + url.absoluteString)
+    }
+}
+
+public struct UpdateFallbackState: Equatable {
+    public private(set) var channel: UpdateChannel = .direct
+    public private(set) var retryUsed = false
+    public private(set) var shouldContinueInstall = false
+
+    public init() {}
+
+    public mutating func beginFreshCheck() {
+        channel = .direct
+        retryUsed = false
+        shouldContinueInstall = false
     }
 
-    private func finish(_ release: ReleaseInformation, completion: @escaping (Result<ReleaseInformation?, Error>) -> Void) {
-        guard let current = SemanticVersion(InstallerConstants.version),
-              let latest = SemanticVersion(release.tagName), latest > current else {
-            completion(.success(nil))
-            return
-        }
-        completion(.success(release))
+    public mutating func recordDownloadStarted() {
+        if channel == .direct { shouldContinueInstall = true }
     }
 
-    private func request(_ url: URL, completion: @escaping (Result<ReleaseInformation, Error>) -> Void) {
-        var request = URLRequest(url: url, timeoutInterval: 15)
-        request.setValue("TTS-Mod-Installer-macOS/\(InstallerConstants.version)", forHTTPHeaderField: "User-Agent")
-        session.dataTask(with: request) { data, response, error in
-            if let error { completion(.failure(error)); return }
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode), let data else {
-                completion(.failure(InstallerError.dependency("更新检查返回了无效响应。")))
-                return
-            }
-            do { completion(.success(try JSONDecoder().decode(ReleaseInformation.self, from: data))) }
-            catch { completion(.failure(error)) }
-        }.resume()
+    @discardableResult
+    public mutating func requestProxyRetry(forDownloadError isDownloadError: Bool) -> Bool {
+        guard isDownloadError, channel == .direct, !retryUsed else { return false }
+        channel = .proxy
+        retryUsed = true
+        return true
+    }
+
+    public mutating func consumeContinueInstall() -> Bool {
+        guard channel == .proxy, shouldContinueInstall else { return false }
+        shouldContinueInstall = false
+        return true
     }
 }

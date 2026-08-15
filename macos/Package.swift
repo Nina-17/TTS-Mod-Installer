@@ -12,11 +12,17 @@ let package = Package(
         .executable(name: "TTSModInstallerApp", targets: ["TTSModInstallerApp"]),
         .executable(name: "TTSModInstallerCoreTests", targets: ["TTSModInstallerCoreTests"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.5")
+    ],
     targets: [
         .target(name: "TTSModInstallerCore"),
         .executableTarget(
             name: "TTSModInstallerApp",
-            dependencies: ["TTSModInstallerCore"]
+            dependencies: [
+                "TTSModInstallerCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ]
         ),
         .executableTarget(
             name: "TTSModInstallerCoreTests",

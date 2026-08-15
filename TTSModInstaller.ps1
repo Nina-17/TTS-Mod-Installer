@@ -18,7 +18,7 @@ param(
 Set-StrictMode -Version 2.0
 $ErrorActionPreference = 'Stop'
 
-$script:InstallerVersion = '0.6.0'
+$script:InstallerVersion = '0.6.1'
 $script:Bundled7ZipVersion = '26.02'
 $script:Bundled7ZipHashes = @{
     'x86\7z.exe' = '285e5220d6d4240b6a4bdb6357d427e457313376e3464d3cb973637a384ed02a'

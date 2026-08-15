@@ -1,7 +1,7 @@
 import Foundation
 
 public enum InstallerConstants {
-    public static let version = "0.6.0"
+    public static let version = "0.6.1"
     public static let bundleIdentifier = "io.github.nina-17.tts-mod-installer"
     public static let ttsBundleIdentifier = "com.berserk-games.tabletop-simulator"
     public static let sevenZipVersion = "26.02"

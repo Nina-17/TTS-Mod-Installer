@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=${0:A:h}
 MACOS_ROOT=${SCRIPT_DIR:h}
 PROJECT_ROOT=${MACOS_ROOT:h}
-VERSION='0.6.0'
+VERSION='0.6.1'
 ARCHIVE_PATH=${1:-}
 
 if [[ -z "${ARCHIVE_PATH}" || ! -f "${ARCHIVE_PATH}" ]]; then
@@ -44,35 +44,53 @@ export SWIFTPM_MODULECACHE_OVERRIDE="${MACOS_ROOT}/.build/module-cache"
 export CLANG_MODULE_CACHE_PATH="${MACOS_ROOT}/.build/clang-cache"
 /usr/bin/swift build --disable-sandbox -c release --arch arm64 --arch x86_64 --product TTSModInstallerApp
 BIN_PATH=$(/usr/bin/swift build --disable-sandbox -c release --arch arm64 --arch x86_64 --product TTSModInstallerApp --show-bin-path)
+SPARKLE_FRAMEWORK=$(/usr/bin/find "${MACOS_ROOT}/.build/artifacts" -type d -name Sparkle.framework -print -quit)
+if [[ -z "${SPARKLE_FRAMEWORK}" || ! -d "${SPARKLE_FRAMEWORK}" ]]; then
+  print -u2 "SwiftPM 没有生成 Sparkle.framework。"
+  exit 5
+fi
 
 PACKAGE_ROOT="${WORK_ROOT}/TTSModInstaller-macOS-v${VERSION}"
 APP_ROOT="${PACKAGE_ROOT}/TTS Mod Installer.app"
-/bin/mkdir -p "${APP_ROOT}/Contents/MacOS" "${APP_ROOT}/Contents/Resources/tools/7zip"
+/bin/mkdir -p "${APP_ROOT}/Contents/MacOS" "${APP_ROOT}/Contents/Resources/tools/7zip" "${APP_ROOT}/Contents/Frameworks"
 /bin/cp "${BIN_PATH}/TTSModInstallerApp" "${APP_ROOT}/Contents/MacOS/TTSModInstaller"
 /bin/cp "${MACOS_ROOT}/Resources/Info.plist" "${APP_ROOT}/Contents/Info.plist"
 /bin/cp "${SEVENZIP_ROOT}/7zz" "${APP_ROOT}/Contents/Resources/tools/7zip/7zz"
 /bin/cp "${SEVENZIP_ROOT}/License.txt" "${APP_ROOT}/Contents/Resources/tools/7zip/License.txt"
+/usr/bin/ditto "${SPARKLE_FRAMEWORK}" "${APP_ROOT}/Contents/Frameworks/Sparkle.framework"
 /bin/chmod 755 "${APP_ROOT}/Contents/MacOS/TTSModInstaller" "${APP_ROOT}/Contents/Resources/tools/7zip/7zz"
+/usr/bin/install_name_tool -add_rpath '@executable_path/../Frameworks' "${APP_ROOT}/Contents/MacOS/TTSModInstaller"
 
 /usr/bin/xcrun swift "${MACOS_ROOT}/Tools/GenerateIcon.swift" "${APP_ROOT}/Contents/Resources/AppIcon.icns"
 
 /bin/cp "${MACOS_ROOT}/Distribution/macOS-快速开始.txt" "${PACKAGE_ROOT}/macOS-快速开始.txt"
 /bin/cp "${MACOS_ROOT}/Distribution/首次打开说明.txt" "${PACKAGE_ROOT}/首次打开说明.txt"
 /bin/cp "${PROJECT_ROOT}/THIRD-PARTY-NOTICES.txt" "${PACKAGE_ROOT}/THIRD-PARTY-NOTICES.txt"
+/bin/cp "${MACOS_ROOT}/.build/artifacts/sparkle/Sparkle/LICENSE" "${PACKAGE_ROOT}/Sparkle-LICENSE.txt"
 
 /usr/bin/codesign --force --sign - --identifier io.github.nina-17.tts-mod-installer.7zz --timestamp=none "${APP_ROOT}/Contents/Resources/tools/7zip/7zz"
+/usr/bin/codesign --force --deep --sign - --timestamp=none "${APP_ROOT}/Contents/Frameworks/Sparkle.framework"
 /usr/bin/codesign --force --deep --sign - --timestamp=none "${APP_ROOT}"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "${APP_ROOT}"
 
 /bin/mkdir -p "${PROJECT_ROOT}/dist"
 OUTPUT_ZIP="${PROJECT_ROOT}/dist/TTSModInstaller-macOS-v${VERSION}.zip"
 OUTPUT_HASH="${OUTPUT_ZIP}.sha256"
-/bin/rm -f "${OUTPUT_ZIP}" "${OUTPUT_HASH}"
+SPARKLE_ZIP="${PROJECT_ROOT}/dist/TTSModInstaller-macOS-v${VERSION}.sparkle.zip"
+SPARKLE_HASH="${SPARKLE_ZIP}.sha256"
+/bin/rm -f "${OUTPUT_ZIP}" "${OUTPUT_HASH}" "${SPARKLE_ZIP}" "${SPARKLE_HASH}"
 /usr/bin/find "${PACKAGE_ROOT}" -exec /usr/bin/touch -h -t 202601010000 {} +
 cd "${WORK_ROOT}"
-COPYFILE_DISABLE=1 /usr/bin/zip -X -q -r "${OUTPUT_ZIP}" "${PACKAGE_ROOT:t}"
+COPYFILE_DISABLE=1 /usr/bin/zip -X -y -q -r "${OUTPUT_ZIP}" "${PACKAGE_ROOT:t}"
 HASH=$(/usr/bin/shasum -a 256 "${OUTPUT_ZIP}" | /usr/bin/awk '{print $1}')
 print "${HASH}  ${OUTPUT_ZIP:t}" > "${OUTPUT_HASH}"
 
+cd "${PACKAGE_ROOT}"
+COPYFILE_DISABLE=1 /usr/bin/zip -X -y -q -r "${SPARKLE_ZIP}" "${APP_ROOT:t}"
+SPARKLE_DIGEST=$(/usr/bin/shasum -a 256 "${SPARKLE_ZIP}" | /usr/bin/awk '{print $1}')
+print "${SPARKLE_DIGEST}  ${SPARKLE_ZIP:t}" > "${SPARKLE_HASH}"
+
 print "完成：${OUTPUT_ZIP}"
 print "SHA-256：${HASH}"
+print "完成：${SPARKLE_ZIP}"
+print "SHA-256：${SPARKLE_DIGEST}"
