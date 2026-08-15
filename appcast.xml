@@ -1,0 +1,19 @@
+<?xml version="1.0" standalone="yes"?><!-- sparkle-sign-warning:
+IMPORTANT: This file was signed by Sparkle. Any modifications to this file requires re-signing this file with generate_appcast or sign_update! The signed signature will be embedded at the end of this file.
+--><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
+    <channel>
+        <title>TTS Mod Installer</title>
+        <item>
+            <title>0.6.1</title>
+            <pubDate>Sat, 15 Aug 2026 18:57:34 +0000</pubDate>
+            <link>https://github.com/Nina-17/TTS-Mod-Installer/releases/tag/v0.6.1</link>
+            <sparkle:version>601</sparkle:version>
+            <sparkle:shortVersionString>0.6.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/Nina-17/TTS-Mod-Installer/releases/download/v0.6.1/TTSModInstaller-macOS-v0.6.1.sparkle.zip" length="4104913" type="application/octet-stream" sparkle:edSignature="/OxhMI9vnwNP7K2+nMTlVyPXJ+7PH66VQYx3Yv15THKGpOLc8B38U37PP+b236S2CceVYcqCpOZDxlQkZvKQDA=="></enclosure>
+        </item>
+    </channel>
+</rss><!-- sparkle-signatures:
+edSignature: uFA5d5OPWOPcyqqmyI37dexBCfZ3ymfWGZJCYxhnLWQWc5WsbZmhe9IIzS7r8eLZha1L5GpxLK/rP74JrvdkCA==
+length: 1172
+-->
