@@ -2335,7 +2335,14 @@ function ConvertFrom-InstallerInputLine {
     if ($singleCandidate.Length -ge 2 -and $singleCandidate.StartsWith('"') -and $singleCandidate.EndsWith('"')) {
         $singleCandidate = $singleCandidate.Substring(1, $singleCandidate.Length - 2)
     }
-    if (Test-Path -LiteralPath $singleCandidate) {
+    $isSinglePath = $false
+    try {
+        $isSinglePath = Test-Path -LiteralPath $singleCandidate -ErrorAction Stop
+    }
+    catch [System.ArgumentException] {
+        $isSinglePath = $false
+    }
+    if ($isSinglePath) {
         return @($singleCandidate)
     }
 
